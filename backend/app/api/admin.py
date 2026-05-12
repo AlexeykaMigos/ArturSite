@@ -117,7 +117,10 @@ async def get_logs(
 
 
 @router.get("/settings")
-async def get_settings(db: Session = Depends(get_db)):
+async def get_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin"))
+):
     return {
         "app_name": "Электронный учебник",
         "app_version": "1.0.0",

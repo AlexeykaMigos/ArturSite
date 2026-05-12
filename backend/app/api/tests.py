@@ -8,7 +8,7 @@ from ..core.database import get_db
 from ..core.security import get_current_user
 from ..core.email import email_service
 from ..models.user import User
-from ..models.content import Topic, Test, TestAttempt, TopicProgress
+from ..models.content import Topic, Test, TestAttempt, TopicProgress, Lab, LabSubmission
 from ..schemas.test import (
     TestCreate, TestUpdate, TestResponse, TestForUser,
     TestSubmission, TestResultResponse, TestAttemptHistory, TestResultDetail
@@ -121,6 +121,26 @@ async def submit_test(
                 partial = len(set(user_ans) & set(correct_opts)) / len(correct_opts)
                 points_earned = partial
 
+        elif q_type == "matching":
+            correct_pairs = q.get("matching_pairs") or q.get("pairs") or []
+            correct_set = {
+                (pair.get("term_id"), pair.get("definition_id"))
+                for pair in correct_pairs
+                if pair.get("term_id") and pair.get("definition_id")
+            }
+            user_pairs = answers_dict.get(q_id, {}).get("pairs", [])
+            user_set = {
+                (pair.get("term_id"), pair.get("definition_id"))
+                for pair in user_pairs
+                if pair.get("term_id") and pair.get("definition_id")
+            }
+
+            max_points = len(correct_set)
+            points_earned = len(correct_set & user_set) if max_points > 0 else 0
+            correct = max_points > 0 and points_earned == max_points
+            user_answer = user_pairs
+            correct_answer = correct_pairs
+
         elif q_type == "text":
             correct_keywords = [k.lower() for k in q.get("correct_keywords", [])]
             user_ans = answers_dict.get(q_id, {}).get("answer_text", "").lower().strip()
@@ -157,6 +177,26 @@ async def submit_test(
     )
     db.add(attempt)
 
+    topic_result = db.execute(select(Topic).where(Topic.id == topic_id))
+    topic = topic_result.scalar_one_or_none()
+
+    lab_required = bool(topic and topic.has_lab)
+    lab_approved = False
+    if lab_required:
+        lab_submission_result = db.execute(
+            select(LabSubmission)
+            .join(Lab, LabSubmission.lab_id == Lab.id)
+            .where(
+                Lab.topic_id == topic_id,
+                LabSubmission.user_id == current_user.id,
+                LabSubmission.status == "approved"
+            )
+            .limit(1)
+        )
+        lab_approved = lab_submission_result.scalar_one_or_none() is not None
+
+    should_complete = passed and (not lab_required or lab_approved)
+
     progress_result = db.execute(
         select(TopicProgress).where(
             TopicProgress.user_id == current_user.id,
@@ -169,18 +209,20 @@ async def submit_test(
         if progress.best_test_score is None or percentage > progress.best_test_score:
             progress.best_test_score = percentage
 
-        if passed:
+        if passed and should_complete:
             progress.status = "completed"
             progress.completed_at = datetime.utcnow()
+        elif passed and progress.status != "completed":
+            progress.status = "in_progress"
         elif progress.status == "not_started":
             progress.status = "in_progress"
     else:
         progress = TopicProgress(
             user_id=current_user.id,
             topic_id=topic_id,
-            status="completed" if passed else "in_progress",
+            status="completed" if should_complete else "in_progress",
             best_test_score=percentage,
-            completed_at=datetime.utcnow() if passed else None
+            completed_at=datetime.utcnow() if should_complete else None
         )
         db.add(progress)
 
@@ -188,16 +230,13 @@ async def submit_test(
     db.refresh(attempt)
 
     # Send email notification if test passed
-    if passed:
-        topic_result = db.execute(select(Topic).where(Topic.id == topic_id))
-        topic = topic_result.scalar_one_or_none()
-        if topic:
-            email_service.send_test_passed_notification(
-                to_email=current_user.email,
-                student_name=current_user.name,
-                topic_title=topic.title,
-                score=percentage
-            )
+    if passed and topic:
+        email_service.send_test_passed_notification(
+            to_email=current_user.email,
+            student_name=current_user.name,
+            topic_title=topic.title,
+            score=percentage
+        )
 
     return {
         "attempt_id": attempt.id,

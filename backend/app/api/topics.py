@@ -5,6 +5,7 @@ from typing import List
 import uuid
 import os
 import aiofiles
+from datetime import datetime
 
 from ..core.database import get_db
 from ..core.security import get_current_user, require_role
@@ -147,7 +148,6 @@ async def mark_topic_progress(
         if status == "completed":
             progress.completed_at = datetime.utcnow()
     else:
-        from datetime import datetime
         progress = TopicProgress(
             user_id=current_user.id,
             topic_id=topic_id,

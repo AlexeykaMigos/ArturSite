@@ -5,12 +5,14 @@ import { MessageSquare, Reply, Send, Trash2, Edit2 } from 'lucide-react';
 import type { Comment } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { useAuthStore } from '@/stores/auth';
 
 interface CommentsSectionProps {
   topicId: string;
 }
 
 export function CommentsSection({ topicId }: CommentsSectionProps) {
+  const currentUser = useAuthStore((state) => state.user);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newComment, setNewComment] = useState('');
@@ -86,7 +88,7 @@ export function CommentsSection({ topicId }: CommentsSectionProps) {
   };
 
   const renderComment = (comment: Comment, isReply = false) => {
-    const isOwnComment = comment.user_id === localStorage.getItem('userId');
+    const isOwnComment = comment.user_id === currentUser?.id;
 
     return (
       <div

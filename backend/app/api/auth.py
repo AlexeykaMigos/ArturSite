@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from datetime import datetime, timedelta
@@ -69,9 +69,11 @@ async def login(response: Response, email: str, password: str, db: Session = Dep
 
 
 @router.post("/refresh")
-async def refresh_token(response: Response, refresh_token: Optional[str] = None, db: Session = Depends(get_db)):
-    if not refresh_token:
-        refresh_token = None
+async def refresh_token(
+    response: Response,
+    refresh_token: Optional[str] = Cookie(default=None),
+    db: Session = Depends(get_db)
+):
 
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
@@ -96,7 +98,11 @@ async def refresh_token(response: Response, refresh_token: Optional[str] = None,
 
 
 @router.post("/logout")
-async def logout(response: Response, refresh_token: Optional[str] = None, db: Session = Depends(get_db)):
+async def logout(
+    response: Response,
+    refresh_token: Optional[str] = Cookie(default=None),
+    db: Session = Depends(get_db)
+):
     if refresh_token:
         result = db.execute(select(RefreshToken).where(RefreshToken.token == refresh_token))
         token = result.scalar_one_or_none()

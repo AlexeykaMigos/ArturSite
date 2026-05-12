@@ -1,17 +1,20 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
-import { cn, formatTime } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { ArrowLeft, ArrowRight, FileText, CheckCircle2, Clock, HelpCircle } from 'lucide-react';
 import type { TopicWithProgress, Lab } from '@/types';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { CommentsSection } from '@/components/CommentsSection';
 
 export default function TopicPage() {
   const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
   const [showLabUpload, setShowLabUpload] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: topic, isLoading } = useQuery<TopicWithProgress>({
     queryKey: ['topic', topicId],
@@ -28,6 +31,28 @@ export default function TopicPage() {
       return response.data;
     },
     enabled: !!topic?.has_lab,
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await api.post(`/topics/${topicId}/lab/submit`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lab', topicId] });
+      queryClient.invalidateQueries({ queryKey: ['labs', 'my'] });
+      setShowLabUpload(false);
+      setSelectedFile(null);
+      setUploadError(null);
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail || 'Не удалось загрузить файл';
+      setUploadError(message);
+    },
   });
 
   if (isLoading) {
@@ -144,6 +169,54 @@ export default function TopicPage() {
           </div>
         )}
       </div>
+
+      {showLabUpload && lab && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="card p-6 w-full max-w-md">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Загрузка лабораторной работы
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  Разрешённые форматы: {lab.allowed_extensions.join(', ')}. Максимум 100MB.
+                </p>
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setSelectedFile(file);
+                    setUploadError(null);
+                  }}
+                  className="block w-full text-sm text-gray-600 dark:text-gray-300"
+                />
+              </div>
+              {uploadError && (
+                <p className="text-sm text-red-500">{uploadError}</p>
+              )}
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowLabUpload(false);
+                    setSelectedFile(null);
+                    setUploadError(null);
+                  }}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  onClick={() => selectedFile && uploadMutation.mutate(selectedFile)}
+                  isLoading={uploadMutation.isPending}
+                  disabled={!selectedFile}
+                >
+                  Загрузить
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CommentsSection topicId={topicId || ''} />
 
