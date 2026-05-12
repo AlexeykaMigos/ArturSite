@@ -5,7 +5,7 @@ import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { cn, formatTime } from '@/lib/utils';
 import { CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
-import type { Test, TestResult } from '@/types';
+import type { TestResult } from '@/types';
 
 export default function TestPage() {
   const { topicId } = useParams<{ topicId: string }>();
@@ -78,6 +78,17 @@ export default function TestPage() {
 
   const handleTextAnswer = (questionId: string, text: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: { answer_text: text } }));
+  };
+
+  const handleMatchingAnswer = (questionId: string, termId: string, definitionId: string) => {
+    setAnswers((prev) => {
+      const currentPairs = prev[questionId]?.pairs || [];
+      const updatedPairs = currentPairs.filter((pair: any) => pair.term_id !== termId);
+      if (definitionId) {
+        updatedPairs.push({ term_id: termId, definition_id: definitionId });
+      }
+      return { ...prev, [questionId]: { pairs: updatedPairs } };
+    });
   };
 
   const toggleFlag = (questionId: string) => {
@@ -303,6 +314,36 @@ export default function TestPage() {
                 placeholder="Введите ваш ответ..."
                 className="input min-h-[100px]"
               />
+            )}
+
+            {question.type === 'matching' && question.matching_terms && question.matching_definitions && (
+              <div className="space-y-3">
+                {question.matching_terms.map((term: any) => {
+                  const selectedDefinition = answers[question.id]?.pairs?.find(
+                    (pair: any) => pair.term_id === term.id
+                  )?.definition_id || '';
+
+                  return (
+                    <div key={term.id} className="flex items-center gap-3">
+                      <div className="flex-1 text-sm text-gray-900 dark:text-gray-100">
+                        {term.text}
+                      </div>
+                      <select
+                        value={selectedDefinition}
+                        onChange={(e) => handleMatchingAnswer(question.id, term.id, e.target.value)}
+                        className="input max-w-[240px]"
+                      >
+                        <option value="">Выберите определение</option>
+                        {question.matching_definitions.map((definition: any) => (
+                          <option key={definition.id} value={definition.id}>
+                            {definition.text}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         ))}

@@ -11,7 +11,11 @@ from ..models.user import User, UserRole
 from ..models.content import Module, Topic, Test, LabSubmission, TopicProgress, TestAttempt
 from ..schemas.user import UserCreate, UserResponse
 
-router = APIRouter(prefix="/teacher", tags=["teacher"])
+router = APIRouter(
+    prefix="/teacher",
+    tags=["teacher"],
+    dependencies=[Depends(require_role("teacher", "admin"))]
+)
 
 
 @router.get("/students")

@@ -45,6 +45,7 @@ async def get_overall_progress(
 
         module_completed = 0
         module_in_progress = 0
+        topics_data = []
 
         for topic in topics:
             total_topics += 1
@@ -56,20 +57,28 @@ async def get_overall_progress(
             )
             progress = progress_result.scalar_one_or_none()
 
-            if progress:
-                if progress.status == "completed":
-                    completed += 1
-                    module_completed += 1
-                elif progress.status == "in_progress":
-                    in_progress += 1
-                    module_in_progress += 1
+            status = progress.status if progress else "not_started"
+
+            if status == "completed":
+                completed += 1
+                module_completed += 1
+            elif status == "in_progress":
+                in_progress += 1
+                module_in_progress += 1
+
+            topics_data.append({
+                "id": str(topic.id),
+                "status": status,
+                "best_score": progress.best_test_score if progress else None
+            })
 
         modules_data.append({
             "id": str(module.id),
             "title": module.title,
             "total_topics": len(topics),
             "completed_topics": module_completed,
-            "in_progress_topics": module_in_progress
+            "in_progress_topics": module_in_progress,
+            "topics": topics_data
         })
 
     percentage = int((completed / total_topics * 100) if total_topics > 0 else 0)

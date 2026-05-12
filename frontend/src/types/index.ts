@@ -138,6 +138,13 @@ export interface ModuleProgress {
   total_topics: number;
   completed_topics: number;
   in_progress_topics: number;
+  topics?: TopicProgressSummary[];
+}
+
+export interface TopicProgressSummary {
+  id: string;
+  status: 'not_started' | 'in_progress' | 'completed';
+  best_score?: number | null;
 }
 
 export interface TopicStats {

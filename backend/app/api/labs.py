@@ -11,16 +11,16 @@ from ..core.database import get_db
 from ..core.security import get_current_user, require_role
 from ..core.email import email_service
 from ..models.user import User
-from ..models.content import Topic, Lab, LabSubmission, TopicProgress
+from ..models.content import Topic, Lab, LabSubmission, TopicProgress, TestAttempt
 from ..schemas.lab import (
     LabCreate, LabUpdate, LabResponse, LabSubmissionResponse,
     LabSubmissionGrade, StudentLabSubmission, TeacherLabView, LabSubmissionList
 )
 
-router = APIRouter(prefix="/topics", tags=["labs"])
+router = APIRouter(tags=["labs"])
 
 
-@router.get("/{topic_id}/lab", response_model=LabResponse)
+@router.get("/topics/{topic_id}/lab", response_model=LabResponse)
 async def get_lab(topic_id: str, db: Session = Depends(get_db)):
     result = db.execute(select(Lab).where(Lab.topic_id == topic_id))
     lab = result.scalar_one_or_none()
@@ -31,7 +31,7 @@ async def get_lab(topic_id: str, db: Session = Depends(get_db)):
     return lab
 
 
-@router.post("", response_model=LabResponse)
+@router.post("/labs", response_model=LabResponse)
 async def create_lab(
     lab_data: LabCreate,
     current_user: User = Depends(require_role("teacher", "admin")),
@@ -65,7 +65,7 @@ async def create_lab(
     return lab
 
 
-@router.put("/{topic_id}/lab", response_model=LabResponse)
+@router.put("/topics/{topic_id}/lab", response_model=LabResponse)
 async def update_lab(
     topic_id: str,
     lab_data: LabUpdate,
@@ -88,7 +88,7 @@ async def update_lab(
     return lab
 
 
-@router.post("/{topic_id}/lab/submit", response_model=LabSubmissionResponse)
+@router.post("/topics/{topic_id}/lab/submit", response_model=LabSubmissionResponse)
 async def submit_lab(
     topic_id: str,
     file: UploadFile = File(...),
@@ -130,6 +130,26 @@ async def submit_lab(
         status="pending"
     )
     db.add(submission)
+
+    progress_result = db.execute(
+        select(TopicProgress).where(
+            TopicProgress.user_id == current_user.id,
+            TopicProgress.topic_id == topic_id
+        )
+    )
+    progress = progress_result.scalar_one_or_none()
+
+    if progress:
+        if progress.status == "not_started":
+            progress.status = "in_progress"
+    else:
+        progress = TopicProgress(
+            user_id=current_user.id,
+            topic_id=topic_id,
+            status="in_progress"
+        )
+        db.add(progress)
+
     db.commit()
     db.refresh(submission)
 
@@ -210,6 +230,60 @@ async def grade_lab(
     submission.graded_at = datetime.utcnow()
     submission.graded_by = current_user.id
 
+    topic = None
+    if lab:
+        topic_result = db.execute(select(Topic).where(Topic.id == lab.topic_id))
+        topic = topic_result.scalar_one_or_none()
+
+    if submission.status == "approved" and topic:
+        test_passed = True
+        if topic.has_test:
+            test_passed = False
+            progress_result = db.execute(
+                select(TopicProgress).where(
+                    TopicProgress.user_id == submission.user_id,
+                    TopicProgress.topic_id == topic.id
+                )
+            )
+            progress = progress_result.scalar_one_or_none()
+            if progress and progress.best_test_score is not None:
+                test_passed = progress.best_test_score >= topic.passing_score
+            else:
+                attempt_result = db.execute(
+                    select(TestAttempt)
+                    .where(
+                        TestAttempt.user_id == submission.user_id,
+                        TestAttempt.topic_id == topic.id
+                    )
+                    .order_by(TestAttempt.score.desc())
+                    .limit(1)
+                )
+                attempt = attempt_result.scalar_one_or_none()
+                test_passed = bool(attempt and attempt.score >= topic.passing_score)
+
+        progress_result = db.execute(
+            select(TopicProgress).where(
+                TopicProgress.user_id == submission.user_id,
+                TopicProgress.topic_id == topic.id
+            )
+        )
+        progress = progress_result.scalar_one_or_none()
+
+        if progress:
+            if test_passed or not topic.has_test:
+                progress.status = "completed"
+                progress.completed_at = datetime.utcnow()
+            elif progress.status == "not_started":
+                progress.status = "in_progress"
+        else:
+            progress = TopicProgress(
+                user_id=submission.user_id,
+                topic_id=topic.id,
+                status="completed" if (test_passed or not topic.has_test) else "in_progress",
+                completed_at=datetime.utcnow() if (test_passed or not topic.has_test) else None
+            )
+            db.add(progress)
+
     db.commit()
     db.refresh(submission)
 
@@ -233,7 +307,8 @@ async def get_pending_labs(
     page: int = 1,
     page_size: int = 20,
     status: str = "pending",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("teacher", "admin"))
 ):
     query = select(LabSubmission, Lab, Topic, User).join(Lab, LabSubmission.lab_id == Lab.id).join(Topic, Lab.topic_id == Topic.id).join(User, LabSubmission.user_id == User.id)
 

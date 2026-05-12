@@ -9,14 +9,6 @@ interface ModuleListProps {
 }
 
 export function ModuleList({ modules, progress, onTopicClick }: ModuleListProps) {
-  const getTopicStatus = (topicId: string): 'not_started' | 'in_progress' | 'completed' => {
-    if (!progress) return 'not_started';
-    for (const mod of progress.modules) {
-      if (mod.id === topicId) return 'completed';
-    }
-    return 'not_started';
-  };
-
   return (
     <div className="space-y-6">
       {modules.map((module) => (
@@ -39,14 +31,9 @@ export function ModuleList({ modules, progress, onTopicClick }: ModuleListProps)
 
           <div className="space-y-2">
             {module.topics.map((topic, index) => {
-              const topicProgress = progress?.modules.find(m => m.id === topic.id);
-              const status = topicProgress?.completed_topics 
-                ? topicProgress.completed_topics > 0 
-                  ? topicProgress.completed_topics >= module.topics.length 
-                    ? 'completed' 
-                    : 'in_progress'
-                  : 'not_started'
-                : 'not_started';
+              const moduleProgress = progress?.modules.find(m => m.id === module.id);
+              const topicProgress = moduleProgress?.topics?.find(t => t.id === topic.id);
+              const status = topicProgress?.status ?? 'not_started';
 
               return (
                 <button
