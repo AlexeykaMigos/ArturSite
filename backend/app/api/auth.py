@@ -1,5 +1,6 @@
 import secrets
 import hashlib
+import hmac
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -20,6 +21,14 @@ from ..schemas.user import (
 from ..core.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def hash_reset_token(token: str) -> str:
+    return hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        token.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
 
 
 @router.post("/register")
@@ -174,7 +183,7 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
         return {"message": "If email exists, reset link was sent"}
 
     reset_token = secrets.token_urlsafe(32)
-    reset_token_hash = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+    reset_token_hash = hash_reset_token(reset_token)
     expires_at = datetime.utcnow() + timedelta(hours=1)
     db_token = PasswordResetToken(
         user_id=user.id,
@@ -201,7 +210,7 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
 
 @router.post("/reset-password")
 async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
-    token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
+    token_hash = hash_reset_token(payload.token)
     result = db.execute(
         select(PasswordResetToken).where(PasswordResetToken.token == token_hash)
     )
