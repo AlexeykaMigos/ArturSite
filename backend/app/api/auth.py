@@ -92,7 +92,7 @@ async def refresh_token(
     db: Session = Depends(get_db)
 ):
     if not refresh_token:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        raise HTTPException(status_code=401, detail="Refresh token required")
 
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
@@ -202,7 +202,7 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
             f"<p>Здравствуйте, {user.name}!</p>"
             f"<p>Для сброса пароля перейдите по ссылке:</p>"
             f"<p><a href='{reset_link}'>{reset_link}</a></p>"
-            f"<p>Ссылка действительна {settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS} час(а).</p>"
+            f"<p>Срок действия ссылки: {settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS} ч.</p>"
         )
     )
 

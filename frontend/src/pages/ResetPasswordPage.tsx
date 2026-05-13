@@ -24,7 +24,7 @@ export default function ResetPasswordPage() {
     setSuccess('');
 
     if (!token) {
-      setError('Отсутствует токен восстановления');
+      setError('Ссылка для восстановления пароля недействительна. Пожалуйста, запросите новую ссылку.');
       return;
     }
 
