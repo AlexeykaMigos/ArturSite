@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/client';
 import type { TeacherLabSubmission } from '@/types';
-import { FileText, CheckCircle2, Clock, AlertTriangle, Download } from 'lucide-react';
+import { FileText, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn, formatDate } from '@/lib/utils';

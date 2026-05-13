@@ -17,7 +17,7 @@ export default function ModulesPage() {
     },
   });
 
-  const { data: progress, isLoading: progressLoading } = useQuery<Progress>({
+  const { data: progress } = useQuery<Progress>({
     queryKey: ['progress'],
     queryFn: async () => {
       const response = await api.get('/progress');

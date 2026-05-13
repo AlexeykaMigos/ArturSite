@@ -1,18 +1,35 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
+import secrets
+import hashlib
+import hmac
+from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from datetime import datetime, timedelta
 from typing import Optional
 
 from ..core.database import get_db
+from ..core.config import settings
 from ..core.security import (
     verify_password, get_password_hash, create_access_token,
     create_refresh_token, decode_token, get_current_user
 )
-from ..models.user import User, RefreshToken
-from ..schemas.user import UserCreate, UserResponse, UserPasswordUpdate, UserUpdate
+from ..models.user import User, RefreshToken, PasswordResetToken
+from ..schemas.user import (
+    UserCreate, UserResponse, UserPasswordUpdate, UserUpdate,
+    ForgotPasswordRequest, ResetPasswordRequest
+)
+from ..core.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+PASSWORD_RESET_TOKEN_BYTES = 32
+
+
+def hash_reset_token(token: str) -> str:
+    return hmac.new(
+        settings.SECRET_KEY.encode("utf-8"),
+        token.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
 
 
 @router.post("/register")
@@ -74,6 +91,8 @@ async def refresh_token(
     refresh_token: Optional[str] = Cookie(default=None),
     db: Session = Depends(get_db)
 ):
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token required")
 
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
@@ -157,16 +176,61 @@ async def change_password(
 
 
 @router.post("/forgot-password")
-async def forgot_password(email: str, db: Session = Depends(get_db)):
-    result = db.execute(select(User).where(User.email == email))
+async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    result = db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
     if not user:
         return {"message": "If email exists, reset link was sent"}
 
+    reset_token = secrets.token_urlsafe(PASSWORD_RESET_TOKEN_BYTES)
+    reset_token_hash = hash_reset_token(reset_token)
+    expires_at = datetime.utcnow() + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
+    db_token = PasswordResetToken(
+        user_id=user.id,
+        token=reset_token_hash,
+        expires_at=expires_at
+    )
+    db.add(db_token)
+    db.commit()
+
+    reset_link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={reset_token}"
+    email_service.send_email(
+        to_email=user.email,
+        subject="Восстановление пароля",
+        html_content=(
+            f"<p>Здравствуйте, {user.name}!</p>"
+            f"<p>Для сброса пароля перейдите по ссылке:</p>"
+            f"<p><a href='{reset_link}'>{reset_link}</a></p>"
+            f"<p>Срок действия ссылки: {settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS} ч.</p>"
+        )
+    )
+
     return {"message": "If email exists, reset link was sent"}
 
 
 @router.post("/reset-password")
-async def reset_password(token: str, new_password: str, db: Session = Depends(get_db)):
+async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_hash = hash_reset_token(payload.token)
+    result = db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == token_hash)
+    )
+    reset_token = result.scalar_one_or_none()
+
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+    if reset_token.used_at is not None:
+        raise HTTPException(status_code=400, detail="Reset token already used")
+    if reset_token.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Reset token expired")
+
+    user_result = db.execute(select(User).where(User.id == reset_token.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+
+    user.password_hash = get_password_hash(payload.new_password)
+    reset_token.used_at = datetime.utcnow()
+    db.commit()
+
     return {"message": "Password reset successful"}

@@ -1,13 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
 import api from '@/api/client';
 import type { LabSubmission } from '@/types';
 import { FileText, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 
 export default function LabsPage() {
-  const navigate = useNavigate();
-
   const { data: submissions, isLoading } = useQuery<LabSubmission[]>({
     queryKey: ['labs', 'my'],
     queryFn: async () => {
