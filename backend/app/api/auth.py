@@ -21,6 +21,7 @@ from ..schemas.user import (
 from ..core.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+PASSWORD_RESET_TOKEN_BYTES = 32
 
 
 def hash_reset_token(token: str) -> str:
@@ -182,9 +183,9 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
     if not user:
         return {"message": "If email exists, reset link was sent"}
 
-    reset_token = secrets.token_urlsafe(32)
+    reset_token = secrets.token_urlsafe(PASSWORD_RESET_TOKEN_BYTES)
     reset_token_hash = hash_reset_token(reset_token)
-    expires_at = datetime.utcnow() + timedelta(hours=1)
+    expires_at = datetime.utcnow() + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
     db_token = PasswordResetToken(
         user_id=user.id,
         token=reset_token_hash,
@@ -201,7 +202,7 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
             f"<p>Здравствуйте, {user.name}!</p>"
             f"<p>Для сброса пароля перейдите по ссылке:</p>"
             f"<p><a href='{reset_link}'>{reset_link}</a></p>"
-            f"<p>Ссылка действительна 1 час.</p>"
+            f"<p>Ссылка действительна {settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS} час(а).</p>"
         )
     )
 
