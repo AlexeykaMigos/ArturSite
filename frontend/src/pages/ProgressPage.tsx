@@ -4,7 +4,6 @@ import api from '@/api/client';
 import { ProgressCard } from '@/components/ProgressCard';
 import type { Progress, TopicStats } from '@/types';
 import { BarChart2, TrendingUp, Award, Clock, Download } from 'lucide-react';
-import { useEffect, useRef } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,

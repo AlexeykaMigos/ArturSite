@@ -3,7 +3,7 @@ import { useState } from 'react';
 import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Users, Plus, Search, Download, Lock, Unlock } from 'lucide-react';
+import { Users, Plus, Search, Download } from 'lucide-react';
 
 interface Student {
   id: string;

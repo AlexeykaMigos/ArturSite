@@ -47,6 +47,15 @@ class UserPasswordUpdate(BaseModel):
     new_password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
 class GroupCreate(BaseModel):
     name: str
 

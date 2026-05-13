@@ -4,7 +4,6 @@ import api from '@/api/client';
 import type { Module } from '@/types';
 import { BookOpen, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { cn } from '@/lib/utils';
 
 export default function TeacherContentPage() {
   const navigate = useNavigate();
