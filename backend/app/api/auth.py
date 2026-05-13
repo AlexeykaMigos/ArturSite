@@ -1,4 +1,5 @@
 import secrets
+import hashlib
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -6,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from ..core.database import get_db
+from ..core.config import settings
 from ..core.security import (
     verify_password, get_password_hash, create_access_token,
     create_refresh_token, decode_token, get_current_user
@@ -172,16 +174,17 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
         return {"message": "If email exists, reset link was sent"}
 
     reset_token = secrets.token_urlsafe(32)
+    reset_token_hash = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
     expires_at = datetime.utcnow() + timedelta(hours=1)
     db_token = PasswordResetToken(
         user_id=user.id,
-        token=reset_token,
+        token=reset_token_hash,
         expires_at=expires_at
     )
     db.add(db_token)
     db.commit()
 
-    reset_link = f"/reset-password?token={reset_token}"
+    reset_link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={reset_token}"
     email_service.send_email(
         to_email=user.email,
         subject="Восстановление пароля",
@@ -198,18 +201,23 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
 
 @router.post("/reset-password")
 async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    token_hash = hashlib.sha256(payload.token.encode("utf-8")).hexdigest()
     result = db.execute(
-        select(PasswordResetToken).where(PasswordResetToken.token == payload.token)
+        select(PasswordResetToken).where(PasswordResetToken.token == token_hash)
     )
     reset_token = result.scalar_one_or_none()
 
-    if not reset_token or reset_token.used_at is not None or reset_token.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    if not reset_token:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+    if reset_token.used_at is not None:
+        raise HTTPException(status_code=400, detail="Reset token already used")
+    if reset_token.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Reset token expired")
 
     user_result = db.execute(select(User).where(User.id == reset_token.user_id))
     user = user_result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        raise HTTPException(status_code=400, detail="Invalid reset token")
 
     user.password_hash = get_password_hash(payload.new_password)
     reset_token.used_at = datetime.utcnow()

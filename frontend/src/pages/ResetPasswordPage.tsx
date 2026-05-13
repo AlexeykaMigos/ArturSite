@@ -5,6 +5,8 @@ import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 
+const REDIRECT_DELAY_MS = 1000;
+
 export default function ResetPasswordPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -38,7 +40,7 @@ export default function ResetPasswordPage() {
         new_password: password,
       });
       setSuccess(response.data.message || 'Пароль успешно обновлен');
-      setTimeout(() => navigate('/login'), 1000);
+      setTimeout(() => navigate('/login'), REDIRECT_DELAY_MS);
     } catch (err: unknown) {
       const message =
         typeof err === 'object' && err !== null && 'response' in err
