@@ -114,7 +114,8 @@ async def get_my_labs(
             "feedback": sub.feedback,
             "submitted_at": sub.submitted_at,
             "graded_at": sub.graded_at,
-            "topic_title": topic.title
+            "topic_title": topic.title,
+            "topic_id": str(topic.id),
         }
         for sub, lab, topic in rows
     ]

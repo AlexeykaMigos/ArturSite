@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import api from '@/api/client';
 import { ProgressCard } from '@/components/ProgressCard';
-import type { Progress, TopicStats } from '@/types';
+import type { Progress, TopicStats, LabSubmission } from '@/types';
 import { BarChart2, TrendingUp, Award, Clock, Download } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -49,6 +49,25 @@ export default function ProgressPage() {
       const response = await api.get('/progress/stats');
       return response.data;
     },
+  });
+
+  const { data: labSubmissions } = useQuery<LabSubmission[]>({
+    queryKey: ['labs', 'my'],
+    queryFn: async () => {
+      const response = await api.get('/labs/my');
+      return response.data;
+    },
+  });
+
+  // Map topic_id → latest approved/graded lab submission
+  const labByTopic = new Map<string, LabSubmission>();
+  labSubmissions?.forEach((sub) => {
+    if (sub.topic_id) {
+      const existing = labByTopic.get(sub.topic_id);
+      if (!existing || (sub.grade != null && existing.grade == null)) {
+        labByTopic.set(sub.topic_id, sub);
+      }
+    }
   });
 
   // Prepare chart data
@@ -214,12 +233,17 @@ export default function ProgressPage() {
                       Попыток
                     </th>
                     <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                      Лучший балл
+                      Тест
+                    </th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Лаба
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stats?.map((stat) => (
+                  {stats?.map((stat) => {
+                    const lab = labByTopic.get(stat.topic_id);
+                    return (
                     <tr
                       key={stat.topic_id}
                       className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer"
@@ -229,12 +253,30 @@ export default function ProgressPage() {
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400">{stat.module_title}</td>
                       <td className="py-3 px-4 text-center text-gray-600 dark:text-gray-300">{stat.attempts}</td>
                       <td className="py-3 px-4 text-center">
-                        <span className={`font-medium ${stat.best_score && stat.best_score >= 70 ? 'text-green-600' : 'text-gray-600'}`}>
-                          {stat.best_score ?? '-'}
+                        <span className={`font-medium ${stat.best_score && stat.best_score >= 70 ? 'text-green-600' : 'text-gray-600 dark:text-gray-400'}`}>
+                          {stat.best_score != null ? `${stat.best_score}%` : '-'}
                         </span>
                       </td>
+                      <td className="py-3 px-4 text-center">
+                        {lab ? (
+                          <div>
+                            <span className={`font-medium ${lab.grade != null ? (lab.status === 'approved' ? 'text-green-600' : 'text-amber-600') : 'text-gray-400'}`}>
+                              {lab.grade != null ? `${lab.grade} б.` : '—'}
+                            </span>
+                            {lab.status === 'pending' && (
+                              <div className="text-xs text-gray-400">на проверке</div>
+                            )}
+                            {lab.status === 'needs_revision' && (
+                              <div className="text-xs text-red-400">доработка</div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-300 dark:text-gray-600">—</span>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

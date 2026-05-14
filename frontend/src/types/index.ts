@@ -124,6 +124,7 @@ export interface LabSubmission {
   submitted_at: string;
   graded_at?: string;
   topic_title?: string;
+  topic_id?: string;
 }
 
 export interface TeacherLabSubmission extends LabSubmission {
