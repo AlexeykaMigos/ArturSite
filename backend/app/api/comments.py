@@ -127,7 +127,7 @@ async def update_comment(
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     
-    if comment.user_id != current_user.id:
+    if comment.user_id != current_user.id and current_user.role not in ('admin', 'teacher'):
         raise HTTPException(status_code=403, detail="You can only edit your own comments")
     
     comment.content = comment_data.content
@@ -167,7 +167,7 @@ async def delete_comment(
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     
-    if comment.user_id != current_user.id:
+    if comment.user_id != current_user.id and current_user.role not in ('admin', 'teacher'):
         raise HTTPException(status_code=403, detail="You can only delete your own comments")
     
     # Delete replies first

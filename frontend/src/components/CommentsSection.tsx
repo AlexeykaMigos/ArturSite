@@ -89,6 +89,7 @@ export function CommentsSection({ topicId }: CommentsSectionProps) {
 
   const renderComment = (comment: Comment, isReply = false) => {
     const isOwnComment = comment.user_id === currentUser?.id;
+    const canModerate = currentUser?.role === 'admin' || currentUser?.role === 'teacher';
 
     return (
       <div
@@ -152,22 +153,22 @@ export function CommentsSection({ topicId }: CommentsSectionProps) {
                 </button>
               )}
               {isOwnComment && (
-                <>
-                  <button
-                    onClick={() => handleEdit(comment)}
-                    className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
-                  >
-                    <Edit2 className="w-3 h-3" />
-                    Редактировать
-                  </button>
-                  <button
-                    onClick={() => handleDelete(comment.id)}
-                    className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Удалить
-                  </button>
-                </>
+                <button
+                  onClick={() => handleEdit(comment)}
+                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  Редактировать
+                </button>
+              )}
+              {(isOwnComment || canModerate) && (
+                <button
+                  onClick={() => handleDelete(comment.id)}
+                  className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Удалить
+                </button>
               )}
             </div>
 

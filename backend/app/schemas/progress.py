@@ -63,13 +63,20 @@ class CommentCreate(CommentBase):
     pass
 
 
+class CommentUserInfo(BaseModel):
+    name: str
+    avatar_url: Optional[str] = None
+
+
 class CommentResponse(BaseModel):
     id: UUID
     topic_id: UUID
     user_id: UUID
-    user_name: str
-    user_avatar: Optional[str] = None
+    content: str
+    parent_id: Optional[UUID] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
+    user: CommentUserInfo
     replies: List["CommentResponse"] = []
 
     class Config:
