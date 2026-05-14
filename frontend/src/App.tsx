@@ -16,6 +16,10 @@ import TeacherContentPage from '@/pages/teacher/ContentPage';
 import TeacherLabsPage from '@/pages/teacher/LabsPage';
 import TeacherStatsPage from '@/pages/teacher/StatsPage';
 import TeacherStudentsPage from '@/pages/teacher/StudentsPage';
+import ModuleEditPage from '@/pages/teacher/ModuleEditPage';
+import TopicEditPage from '@/pages/teacher/TopicEditPage';
+import UsersPage from '@/pages/admin/UsersPage';
+import SettingsPage from '@/pages/admin/SettingsPage';
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
   const { isAuthenticated, isLoading, user } = useAuthStore();
@@ -129,6 +133,24 @@ function App() {
         />
 
         <Route
+          path="/teacher/content/module/:moduleId/edit"
+          element={
+            <ProtectedRoute roles={['teacher', 'admin']}>
+              <ModuleEditPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/teacher/content/topic/:topicId/edit"
+          element={
+            <ProtectedRoute roles={['teacher', 'admin']}>
+              <TopicEditPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/teacher/labs"
           element={
             <ProtectedRoute roles={['teacher', 'admin']}>
@@ -151,6 +173,24 @@ function App() {
           element={
             <ProtectedRoute roles={['teacher', 'admin']}>
               <TeacherStudentsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute roles={['admin']}>
+              <UsersPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/settings"
+          element={
+            <ProtectedRoute roles={['admin']}>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

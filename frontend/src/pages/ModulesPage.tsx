@@ -9,20 +9,22 @@ import { BookOpen, TrendingUp } from 'lucide-react';
 export default function ModulesPage() {
   const navigate = useNavigate();
 
-  const { data: modules, isLoading: modulesLoading } = useQuery<Module[]>({
+  const { data: modules, isLoading: modulesLoading, error: modulesError } = useQuery<Module[]>({
     queryKey: ['modules'],
     queryFn: async () => {
       const response = await api.get('/modules');
       return response.data;
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  const { data: progress } = useQuery<Progress>({
+  const { data: progress, error: progressError } = useQuery<Progress>({
     queryKey: ['progress'],
     queryFn: async () => {
       const response = await api.get('/progress');
       return response.data;
     },
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
   if (modulesLoading) {
@@ -37,6 +39,20 @@ export default function ModulesPage() {
             </div>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (modulesError) {
+    return (
+      <div className="card p-12 text-center">
+        <p className="text-red-600 dark:text-red-400 mb-4">Ошибка загрузки модулей</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+        >
+          Попробовать снова
+        </button>
       </div>
     );
   }

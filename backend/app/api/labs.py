@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import List
 from datetime import datetime
 import uuid
@@ -22,7 +22,12 @@ router = APIRouter(tags=["labs"])
 
 @router.get("/topics/{topic_id}/lab", response_model=LabResponse)
 async def get_lab(topic_id: str, db: Session = Depends(get_db)):
-    result = db.execute(select(Lab).where(Lab.topic_id == topic_id))
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
+    result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
     lab = result.scalar_one_or_none()
 
     if not lab:
@@ -37,18 +42,23 @@ async def create_lab(
     current_user: User = Depends(require_role("teacher", "admin")),
     db: Session = Depends(get_db)
 ):
-    topic_result = db.execute(select(Topic).where(Topic.id == lab_data.topic_id))
+    try:
+        topic_uuid = uuid.UUID(lab_data.topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
+    topic_result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = topic_result.scalar_one_or_none()
 
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
 
-    existing = db.execute(select(Lab).where(Lab.topic_id == lab_data.topic_id)).scalar_one_or_none()
+    existing = db.execute(select(Lab).where(Lab.topic_id == topic_uuid)).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="Lab already exists for this topic")
 
     lab = Lab(
-        topic_id=lab_data.topic_id,
+        topic_id=topic_uuid,
         title=lab_data.title,
         description=lab_data.description,
         requirements=lab_data.requirements,
@@ -72,7 +82,12 @@ async def update_lab(
     current_user: User = Depends(require_role("teacher", "admin")),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(Lab).where(Lab.topic_id == topic_id))
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
+    result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
     lab = result.scalar_one_or_none()
 
     if not lab:
@@ -95,7 +110,12 @@ async def submit_lab(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(Lab).where(Lab.topic_id == topic_id))
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
+    result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
     lab = result.scalar_one_or_none()
 
     if not lab:

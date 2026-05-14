@@ -44,6 +44,7 @@ class TopicUpdate(BaseModel):
     has_lab: Optional[bool] = None
     passing_score: Optional[int] = None
     time_limit: Optional[int] = None
+    lab_tasks: Optional[List[dict]] = None
 
 
 class TopicInModule(TopicBase):

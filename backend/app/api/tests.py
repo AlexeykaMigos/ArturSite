@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List
 from datetime import datetime
+import uuid
 
 from ..core.database import get_db
 from ..core.security import get_current_user
@@ -19,13 +20,18 @@ router = APIRouter(prefix="/topics", tags=["tests"])
 
 @router.get("/{topic_id}/test", response_model=TestForUser)
 async def get_test(topic_id: str, db: Session = Depends(get_db)):
-    result = db.execute(select(Test).where(Test.topic_id == topic_id))
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
+    result = db.execute(select(Test).where(Test.topic_id == topic_uuid))
     test = result.scalar_one_or_none()
 
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
-    topic_result = db.execute(select(Topic).where(Topic.id == topic_id))
+    topic_result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = topic_result.scalar_one_or_none()
 
     questions = test.questions if isinstance(test.questions, list) else []
@@ -71,7 +77,12 @@ async def submit_test(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(Test).where(Test.topic_id == topic_id))
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
+    result = db.execute(select(Test).where(Test.topic_id == topic_uuid))
     test = result.scalar_one_or_none()
 
     if not test:
@@ -168,7 +179,7 @@ async def submit_test(
 
     attempt = TestAttempt(
         user_id=current_user.id,
-        topic_id=topic_id,
+        topic_id=topic_uuid,
         test_id=test.id,
         score=percentage,
         passed=passed,
@@ -177,7 +188,7 @@ async def submit_test(
     )
     db.add(attempt)
 
-    topic_result = db.execute(select(Topic).where(Topic.id == topic_id))
+    topic_result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = topic_result.scalar_one_or_none()
 
     lab_required = bool(topic and topic.has_lab)
@@ -187,7 +198,7 @@ async def submit_test(
             select(LabSubmission)
             .join(Lab, LabSubmission.lab_id == Lab.id)
             .where(
-                Lab.topic_id == topic_id,
+                Lab.topic_id == topic_uuid,
                 LabSubmission.user_id == current_user.id,
                 LabSubmission.status == "approved"
             )
@@ -200,7 +211,7 @@ async def submit_test(
     progress_result = db.execute(
         select(TopicProgress).where(
             TopicProgress.user_id == current_user.id,
-            TopicProgress.topic_id == topic_id
+            TopicProgress.topic_id == topic_uuid
         )
     )
     progress = progress_result.scalar_one_or_none()
@@ -219,7 +230,7 @@ async def submit_test(
     else:
         progress = TopicProgress(
             user_id=current_user.id,
-            topic_id=topic_id,
+            topic_id=topic_uuid,
             status="completed" if should_complete else "in_progress",
             best_test_score=percentage,
             completed_at=datetime.utcnow() if should_complete else None
@@ -284,11 +295,16 @@ async def get_topic_test_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
     result = db.execute(
         select(TestAttempt)
         .where(
             TestAttempt.user_id == current_user.id,
-            TestAttempt.topic_id == topic_id
+            TestAttempt.topic_id == topic_uuid
         )
         .order_by(TestAttempt.created_at.desc())
     )
@@ -312,11 +328,16 @@ async def get_best_attempt(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
     result = db.execute(
         select(TestAttempt)
         .where(
             TestAttempt.user_id == current_user.id,
-            TestAttempt.topic_id == topic_id
+            TestAttempt.topic_id == topic_uuid
         )
         .order_by(TestAttempt.score.desc())
         .limit(1)

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import List
 from datetime import datetime
+import uuid
 
 from ..core.database import get_db
 from ..core.security import get_current_user
@@ -15,9 +16,14 @@ router = APIRouter(prefix="/topics", tags=["comments"])
 
 @router.get("/{topic_id}/comments", response_model=List[CommentResponse])
 async def get_topic_comments(topic_id: str, db: Session = Depends(get_db)):
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
     result = db.execute(
         select(Comment)
-        .where(Comment.topic_id == topic_id, Comment.parent_id == None)
+        .where(Comment.topic_id == topic_uuid, Comment.parent_id == None)
         .order_by(Comment.created_at.desc())
     )
     comments = result.scalars().all()
@@ -73,8 +79,13 @@ async def create_comment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+    
     comment = Comment(
-        topic_id=topic_id,
+        topic_id=topic_uuid,
         user_id=current_user.id,
         content=comment_data.content,
         parent_id=comment_data.parent_id
@@ -105,7 +116,12 @@ async def update_comment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(Comment).where(Comment.id == comment_id))
+    try:
+        comment_uuid = uuid.UUID(comment_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid comment ID")
+    
+    result = db.execute(select(Comment).where(Comment.id == comment_uuid))
     comment = result.scalar_one_or_none()
     
     if not comment:
@@ -140,7 +156,12 @@ async def delete_comment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(Comment).where(Comment.id == comment_id))
+    try:
+        comment_uuid = uuid.UUID(comment_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid comment ID")
+    
+    result = db.execute(select(Comment).where(Comment.id == comment_uuid))
     comment = result.scalar_one_or_none()
     
     if not comment:
@@ -150,7 +171,7 @@ async def delete_comment(
         raise HTTPException(status_code=403, detail="You can only delete your own comments")
     
     # Delete replies first
-    replies_result = db.execute(select(Comment).where(Comment.parent_id == comment_id))
+    replies_result = db.execute(select(Comment).where(Comment.parent_id == comment_uuid))
     replies = replies_result.scalars().all()
     for reply in replies:
         db.delete(reply)

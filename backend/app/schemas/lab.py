@@ -4,6 +4,17 @@ from datetime import datetime
 from uuid import UUID
 
 
+class LabTaskResponse(BaseModel):
+    id: UUID
+    title: str
+    description: str
+    order: int
+    max_score: int
+
+    class Config:
+        from_attributes = True
+
+
 class LabBase(BaseModel):
     title: str
     description: str
@@ -28,6 +39,7 @@ class LabResponse(LabBase):
     id: UUID
     topic_id: UUID
     created_at: datetime
+    tasks: List[LabTaskResponse] = []
 
     class Config:
         from_attributes = True

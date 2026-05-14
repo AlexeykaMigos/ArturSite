@@ -93,6 +93,14 @@ export interface TestAttempt {
   created_at: string;
 }
 
+export interface LabTask {
+  id: string;
+  title: string;
+  description: string;
+  order: number;
+  max_score: number;
+}
+
 export interface Lab {
   id: string;
   topic_id: string;
@@ -102,6 +110,7 @@ export interface Lab {
   max_score: number;
   allowed_extensions: string[];
   created_at: string;
+  tasks: LabTask[];
 }
 
 export interface LabSubmission {

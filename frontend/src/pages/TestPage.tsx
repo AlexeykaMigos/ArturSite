@@ -147,36 +147,87 @@ export default function TestPage() {
           </div>
 
           <div className="space-y-6">
-            {result.details.map((detail, idx) => (
-              <div
-                key={detail.question_id}
-                className={cn(
-                  'p-4 rounded-lg border',
-                  detail.correct
-                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                )}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  {detail.correct ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+            {result.details.map((detail, idx) => {
+              const question = test?.questions?.find((q: any) => q.id === detail.question_id);
+              const formatAnswer = (answer: any, type: string) => {
+                if (type === 'matching' && Array.isArray(answer)) {
+                  return answer.map((pair: any) => {
+                    const term = question?.matching_terms?.find((t: any) => t.id === pair.term_id);
+                    const def = question?.matching_definitions?.find((d: any) => d.id === pair.definition_id);
+                    return `${term?.text || pair.term_id} → ${def?.text || pair.definition_id}`;
+                  }).join(', ');
+                }
+                if (type === 'single' || type === 'multiple') {
+                  if (Array.isArray(answer)) {
+                    return answer.map((id: string) => {
+                      const opt = question?.options?.find((o: any) => o.id === id);
+                      return opt?.text || id;
+                    }).join(', ');
+                  }
+                  const opt = question?.options?.find((o: any) => o.id === answer);
+                  return opt?.text || answer;
+                }
+                if (type === 'text') {
+                  return answer;
+                }
+                return JSON.stringify(answer);
+              };
+
+              const formatCorrectAnswer = (answer: any, type: string) => {
+                if (type === 'matching' && Array.isArray(answer)) {
+                  return answer.map((pair: any) => {
+                    const term = question?.matching_terms?.find((t: any) => t.id === pair.term_id);
+                    const def = question?.matching_definitions?.find((d: any) => d.id === pair.definition_id);
+                    return `${term?.text || pair.term_id} → ${def?.text || pair.definition_id}`;
+                  }).join(', ');
+                }
+                if (type === 'single' || type === 'multiple') {
+                  if (Array.isArray(answer)) {
+                    return answer.map((id: string) => {
+                      const opt = question?.options?.find((o: any) => o.id === id);
+                      return opt?.text || id;
+                    }).join(', ');
+                  }
+                  const opt = question?.options?.find((o: any) => o.id === answer);
+                  return opt?.text || answer;
+                }
+                if (type === 'text') {
+                  return Array.isArray(answer) ? answer.join(', ') : answer;
+                }
+                return JSON.stringify(answer);
+              };
+
+              return (
+                <div
+                  key={detail.question_id}
+                  className={cn(
+                    'p-4 rounded-lg border',
+                    detail.correct
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                   )}
-                  <span className="font-medium text-gray-900 dark:text-gray-100">
-                    Вопрос {idx + 1}
-                  </span>
-                </div>
-                {!detail.correct && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    Правильный ответ: {JSON.stringify(detail.correct_answer)}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    {detail.correct ? (
+                      <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                    )}
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Вопрос {idx + 1}
+                    </span>
+                  </div>
+                  {!detail.correct && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                      Правильный ответ: {formatCorrectAnswer(detail.correct_answer, question?.type)}
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Ваш ответ: {formatAnswer(detail.user_answer, question?.type)}
                   </p>
-                )}
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Ваш ответ: {JSON.stringify(detail.user_answer)}
-                </p>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
 
           <div className="flex justify-center gap-4 mt-8">

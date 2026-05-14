@@ -161,6 +161,22 @@ export default function TopicPage() {
                 </ul>
               </div>
             )}
+            {lab.tasks && lab.tasks.length > 0 && (
+              <div className="mt-4">
+                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Задачи:</h4>
+                <div className="space-y-3">
+                  {lab.tasks.sort((a, b) => a.order - b.order).map((task) => (
+                    <div key={task.id} className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-purple-100 dark:border-purple-700">
+                      <div className="flex items-start justify-between mb-1">
+                        <h5 className="font-medium text-gray-900 dark:text-gray-100">{task.title}</h5>
+                        <span className="text-sm text-purple-600 dark:text-purple-400">{task.max_score} баллов</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{task.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-4">
               <Button variant="secondary" onClick={() => setShowLabUpload(true)}>
                 Загрузить работу

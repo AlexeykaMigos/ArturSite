@@ -91,6 +91,22 @@ class Lab(Base):
 
     topic = relationship("Topic", back_populates="lab")
     submissions = relationship("LabSubmission", back_populates="lab", cascade="all, delete-orphan")
+    tasks = relationship("LabTask", back_populates="lab", cascade="all, delete-orphan")
+
+
+class LabTask(Base):
+    __tablename__ = "lab_tasks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lab_id = Column(UUID(as_uuid=True), ForeignKey("labs.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    order = Column(Integer, default=0)
+    max_score = Column(Integer, default=10)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    lab = relationship("Lab", back_populates="tasks")
 
 
 class LabSubmission(Base):
