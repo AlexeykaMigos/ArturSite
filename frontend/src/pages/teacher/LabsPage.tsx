@@ -29,7 +29,7 @@ interface LabSubmissionList {
 export default function TeacherLabsPage() {
   const [status, setStatus] = useState<string>('pending');
   const [selectedSubmission, setSelectedSubmission] = useState<TeacherLabSubmission | null>(null);
-  const [grade, setGrade] = useState<number>(0);
+  const [gradeStr, setGradeStr] = useState('');
   const [feedback, setFeedback] = useState('');
   const queryClient = useQueryClient();
 
@@ -49,15 +49,21 @@ export default function TeacherLabsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teacher', 'labs'] });
       setSelectedSubmission(null);
-      setGrade(0);
+      setGradeStr('');
       setFeedback('');
     },
   });
 
   const handleGrade = () => {
     if (selectedSubmission) {
-      gradeMutation.mutate({ id: selectedSubmission.id, grade, feedback });
+      gradeMutation.mutate({ id: selectedSubmission.id, grade: parseInt(gradeStr) || 0, feedback });
     }
+  };
+
+  const handleSelectSubmission = (submission: TeacherLabSubmission) => {
+    setSelectedSubmission(submission);
+    setGradeStr(submission.grade !== null && submission.grade !== undefined ? String(submission.grade) : '');
+    setFeedback(submission.feedback || '');
   };
 
   return (
@@ -102,7 +108,7 @@ export default function TeacherLabsPage() {
                   'card p-4 cursor-pointer transition-colors',
                   selectedSubmission?.id === submission.id && 'ring-2 ring-primary'
                 )}
-                onClick={() => setSelectedSubmission(submission)}
+                onClick={() => handleSelectSubmission(submission)}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
@@ -172,8 +178,8 @@ export default function TeacherLabsPage() {
                     type="number"
                     min="0"
                     max="100"
-                    value={grade}
-                    onChange={(e) => setGrade(parseInt(e.target.value) || 0)}
+                    value={gradeStr}
+                    onChange={(e) => setGradeStr(e.target.value)}
                     placeholder="Введите оценку"
                   />
                 </div>
