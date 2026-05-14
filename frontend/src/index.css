@@ -199,3 +199,100 @@ code, pre {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ─── Auth page ─────────────────────────────────── */
+.auth-bg {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #4f46e5 70%, #7c3aed 100%);
+}
+
+.auth-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+.auth-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  animation: blob-float 8s ease-in-out infinite;
+}
+
+.auth-blob-1 {
+  width: 420px; height: 420px;
+  background: rgba(99, 102, 241, 0.35);
+  top: -10%; left: -10%;
+  animation-delay: 0s;
+}
+
+.auth-blob-2 {
+  width: 350px; height: 350px;
+  background: rgba(124, 58, 237, 0.3);
+  bottom: -5%; right: -5%;
+  animation-delay: -3s;
+}
+
+.auth-blob-3 {
+  width: 280px; height: 280px;
+  background: rgba(37, 99, 235, 0.25);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  animation-delay: -5s;
+}
+
+@keyframes blob-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  33%       { transform: translateY(-20px) scale(1.05); }
+  66%       { transform: translateY(10px) scale(0.95); }
+}
+
+.auth-card {
+  @apply bg-white/95 dark:bg-gray-900/90 backdrop-blur-xl rounded-2xl shadow-2xl p-8;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.shadow-glow {
+  box-shadow: 0 0 24px rgba(99, 102, 241, 0.5), 0 8px 24px rgba(0,0,0,0.3);
+}
+
+.btn-gradient {
+  background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
+  border: none !important;
+}
+.btn-gradient:hover {
+  background: linear-gradient(135deg, #1d4ed8, #6d28d9) !important;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+}
+
+/* ─── Gradient-primary utility ──────────────────── */
+.bg-gradient-primary {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+}
+
+/* ─── Floating animation ────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+/* ─── Slide-up ──────────────────────────────────── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 0.4s ease-out; }
+
+/* ─── Pulse ring ────────────────────────────────── */
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s ease-out infinite;
+}
