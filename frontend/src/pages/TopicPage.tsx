@@ -310,8 +310,8 @@ export default function TopicPage() {
         )}
       </div>
 
-      {/* Lab section */}
-      {lab && (
+      {/* Lab section — shown only after course started */}
+      {lab && topic.progress_status !== 'not_started' && (
         <div className="card p-6 mb-5 border-l-4 border-l-secondary">
           <div className="flex items-start gap-4 mb-4">
             <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
