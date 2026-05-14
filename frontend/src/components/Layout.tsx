@@ -1,6 +1,7 @@
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen, BarChart2, FileText, User, LogOut, Sun, Moon, Menu, X,
   GraduationCap, Settings, Users, ClipboardList, TrendingUp, FlaskConical
@@ -65,6 +66,14 @@ export default function Layout() {
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    queryClient.clear();
+    navigate('/login');
+  };
 
   const isTeacher = user?.role === 'teacher' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
@@ -149,7 +158,7 @@ export default function Layout() {
                   <div className="text-xs text-gray-500 dark:text-gray-400">{user?.role ? roleLabel[user.role] : ''}</div>
                 </div>
                 <button
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="ml-1 p-2 rounded-xl text-gray-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
                   title="Выйти"
                 >
@@ -187,7 +196,7 @@ export default function Layout() {
                   <div className="text-xs text-gray-500 dark:text-gray-400">{user?.role ? roleLabel[user.role as keyof typeof roleLabel] : ''}</div>
                 </div>
               </div>
-              <button onClick={logout} className="p-2 rounded-xl text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors">
+              <button onClick={handleLogout} className="p-2 rounded-xl text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors">
                 <LogOut className="w-4 h-4" />
               </button>
             </div>

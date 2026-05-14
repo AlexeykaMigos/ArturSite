@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { ArrowLeft, Save, Plus, Trash2 } from 'lucide-react';
 import type { Topic, Module, Lab } from '@/types';
 import React, { useState, useEffect } from 'react';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 interface QuestionOption {
   id: string;
@@ -395,14 +396,12 @@ export default function TopicEditPage() {
           {/* Content */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Содержание (HTML)
+              Содержание
             </label>
-            <textarea
+            <RichTextEditor
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={12}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm"
-              placeholder="Вы можете использовать HTML теги для форматирования"
+              onChange={setContent}
+              placeholder="Введите содержание темы..."
             />
           </div>
 
