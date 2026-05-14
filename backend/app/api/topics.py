@@ -343,7 +343,8 @@ async def submit_lab(
         raise HTTPException(status_code=404, detail="Lab not found")
 
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else ""
-    if ext not in lab.allowed_extensions:
+    normalized_extensions = [e.lstrip(".") for e in lab.allowed_extensions]
+    if ext not in normalized_extensions:
         raise HTTPException(
             status_code=400,
             detail=f"File extension .{ext} not allowed. Allowed: {lab.allowed_extensions}"
@@ -375,7 +376,7 @@ async def submit_lab(
     progress_result = db.execute(
         select(TopicProgress).where(
             TopicProgress.user_id == current_user.id,
-            TopicProgress.topic_id == topic_id
+            TopicProgress.topic_id == topic_uuid
         )
     )
     progress = progress_result.scalar_one_or_none()
@@ -386,7 +387,7 @@ async def submit_lab(
     else:
         progress = TopicProgress(
             user_id=current_user.id,
-            topic_id=topic_id,
+            topic_id=topic_uuid,
             status="in_progress"
         )
         db.add(progress)

@@ -20,22 +20,6 @@ from ..schemas.lab import (
 router = APIRouter(tags=["labs"])
 
 
-@router.get("/topics/{topic_id}/lab", response_model=LabResponse)
-async def get_lab(topic_id: str, db: Session = Depends(get_db)):
-    try:
-        topic_uuid = uuid.UUID(topic_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
-    result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
-    lab = result.scalar_one_or_none()
-
-    if not lab:
-        raise HTTPException(status_code=404, detail="Lab not found")
-
-    return lab
-
-
 @router.post("/labs", response_model=LabResponse)
 async def create_lab(
     lab_data: LabCreate,
@@ -102,78 +86,6 @@ async def update_lab(
 
     return lab
 
-
-@router.post("/topics/{topic_id}/lab/submit", response_model=LabSubmissionResponse)
-async def submit_lab(
-    topic_id: str,
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    try:
-        topic_uuid = uuid.UUID(topic_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
-    result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
-    lab = result.scalar_one_or_none()
-
-    if not lab:
-        raise HTTPException(status_code=404, detail="Lab not found")
-
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else ""
-    if ext not in lab.allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File extension .{ext} not allowed. Allowed: {lab.allowed_extensions}"
-        )
-
-    upload_dir = f"uploads/labs/{lab.id}"
-    os.makedirs(upload_dir, exist_ok=True)
-
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    new_filename = f"{current_user.id}_{lab.id}_{timestamp}.{ext}"
-    file_path = os.path.join(upload_dir, new_filename)
-
-    content = await file.read()
-    if len(content) > 100 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 100MB)")
-
-    async with aiofiles.open(file_path, "wb") as f:
-        await f.write(content)
-
-    submission = LabSubmission(
-        lab_id=lab.id,
-        user_id=current_user.id,
-        file_path=file_path,
-        file_name=file.filename,
-        status="pending"
-    )
-    db.add(submission)
-
-    progress_result = db.execute(
-        select(TopicProgress).where(
-            TopicProgress.user_id == current_user.id,
-            TopicProgress.topic_id == topic_id
-        )
-    )
-    progress = progress_result.scalar_one_or_none()
-
-    if progress:
-        if progress.status == "not_started":
-            progress.status = "in_progress"
-    else:
-        progress = TopicProgress(
-            user_id=current_user.id,
-            topic_id=topic_id,
-            status="in_progress"
-        )
-        db.add(progress)
-
-    db.commit()
-    db.refresh(submission)
-
-    return submission
 
 
 @router.get("/labs/my", response_model=List[StudentLabSubmission])
