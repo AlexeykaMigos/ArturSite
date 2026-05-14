@@ -31,32 +31,53 @@ async def get_overall_progress(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    modules_result = db.execute(select(Module).where(Module.is_published == True).order_by(Module.order))
+    # Single query: all published modules with their topics
+    modules_result = db.execute(
+        select(Module).where(Module.is_published == True).order_by(Module.order)
+    )
     modules = modules_result.scalars().all()
 
-    total_topics = 0
+    # Single query: all topics for those modules
+    module_ids = [m.id for m in modules]
+    if not module_ids:
+        return {"total_topics": 0, "completed_topics": 0, "in_progress_topics": 0, "percentage": 0, "modules": []}
+
+    topics_result = db.execute(
+        select(Topic).where(Topic.module_id.in_(module_ids)).order_by(Topic.order)
+    )
+    all_topics = topics_result.scalars().all()
+
+    # Single query: all progress records for this user
+    topic_ids = [t.id for t in all_topics]
+    progress_map: dict = {}
+    if topic_ids:
+        progress_result = db.execute(
+            select(TopicProgress).where(
+                TopicProgress.user_id == current_user.id,
+                TopicProgress.topic_id.in_(topic_ids)
+            )
+        )
+        for p in progress_result.scalars().all():
+            progress_map[p.topic_id] = p
+
+    # Group topics by module
+    topics_by_module: dict = {}
+    for t in all_topics:
+        topics_by_module.setdefault(t.module_id, []).append(t)
+
+    total_topics = len(all_topics)
     completed = 0
     in_progress = 0
-
     modules_data = []
-    for module in modules:
-        topics_result = db.execute(select(Topic).where(Topic.module_id == module.id))
-        topics = topics_result.scalars().all()
 
+    for module in modules:
+        module_topics = topics_by_module.get(module.id, [])
         module_completed = 0
         module_in_progress = 0
         topics_data = []
 
-        for topic in topics:
-            total_topics += 1
-            progress_result = db.execute(
-                select(TopicProgress).where(
-                    TopicProgress.user_id == current_user.id,
-                    TopicProgress.topic_id == topic.id
-                )
-            )
-            progress = progress_result.scalar_one_or_none()
-
+        for topic in module_topics:
+            progress = progress_map.get(topic.id)
             status = progress.status if progress else "not_started"
 
             if status == "completed":
@@ -75,7 +96,7 @@ async def get_overall_progress(
         modules_data.append({
             "id": str(module.id),
             "title": module.title,
-            "total_topics": len(topics),
+            "total_topics": len(module_topics),
             "completed_topics": module_completed,
             "in_progress_topics": module_in_progress,
             "topics": topics_data
