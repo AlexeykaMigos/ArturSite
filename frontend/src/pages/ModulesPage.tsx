@@ -6,6 +6,8 @@ import { ProgressCard } from '@/components/ProgressCard';
 import type { Module, Progress } from '@/types';
 import { useAuthStore } from '@/stores/auth';
 import { BookOpen, TrendingUp, FlaskConical, Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
 
 function ModulesPageSkeleton() {
   return (
@@ -27,9 +29,20 @@ function ModulesPageSkeleton() {
   );
 }
 
+type FilterType = 'all' | 'in_progress' | 'completed' | 'not_started';
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: 'Все',
+  in_progress: 'Начатые',
+  completed: 'Завершённые',
+  not_started: 'Нужно сделать',
+};
+
 export default function ModulesPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [filter, setFilter] = useState<FilterType>('all');
+  const isStudent = user?.role === 'student';
 
   const { data: modules, isLoading: modulesLoading, error: modulesError } = useQuery<Module[]>({
     queryKey: ['modules'],
@@ -71,55 +84,91 @@ export default function ModulesPage() {
   const completedTopics = progress?.completed_topics ?? 0;
   const totalTopics = progress?.total_topics ?? 0;
 
+  // Filter modules/topics for students
+  const filteredModules = (modules || []).map((module) => {
+    if (!isStudent || filter === 'all') return module;
+    const moduleProgress = progress?.modules.find(m => m.id === module.id);
+    const filteredTopics = module.topics.filter((topic) => {
+      const topicProgress = moduleProgress?.topics?.find(t => t.id === topic.id);
+      const status = topicProgress?.status ?? 'not_started';
+      return status === filter;
+    });
+    return { ...module, topics: filteredTopics };
+  }).filter(m => m.topics.length > 0);
+
   return (
     <div className="space-y-6">
-      {/* Hero banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-blue-600 to-secondary p-6 text-white">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4" />
-        <div className="absolute bottom-0 left-1/3 w-48 h-48 bg-white/5 rounded-full translate-y-1/2" />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="w-4 h-4 text-blue-200" />
-            <span className="text-blue-100 text-sm font-medium">Электронный учебник</span>
-          </div>
-          <h1 className="text-2xl font-bold mb-1">Привет, {firstName}! 👋</h1>
-          <p className="text-blue-100 text-sm mb-4">
-            {completedTopics === 0
-              ? 'Начните изучение — выберите первый модуль'
-              : `Вы прошли ${completedTopics} из ${totalTopics} тем. Продолжайте!`
-            }
-          </p>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-white/15 rounded-xl px-3 py-1.5 text-sm">
-              <BookOpen className="w-4 h-4" />
-              <span>{modules?.length ?? 0} модулей</span>
+      {/* Hero banner — only for students */}
+      {isStudent && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-blue-600 to-secondary p-6 text-white">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4" />
+          <div className="absolute bottom-0 left-1/3 w-48 h-48 bg-white/5 rounded-full translate-y-1/2" />
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="w-4 h-4 text-blue-200" />
+              <span className="text-blue-100 text-sm font-medium">Электронный учебник</span>
             </div>
-            <div className="flex items-center gap-2 bg-white/15 rounded-xl px-3 py-1.5 text-sm">
-              <TrendingUp className="w-4 h-4" />
-              <span>{progress?.percentage ?? 0}% завершено</span>
+            <h1 className="text-2xl font-bold mb-1">Привет, {firstName}! 👋</h1>
+            <p className="text-blue-100 text-sm mb-4">
+              {completedTopics === 0
+                ? 'Начните изучение — выберите первый модуль'
+                : `Вы прошли ${completedTopics} из ${totalTopics} тем. Продолжайте!`
+              }
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 bg-white/15 rounded-xl px-3 py-1.5 text-sm">
+                <BookOpen className="w-4 h-4" />
+                <span>{modules?.length ?? 0} модулей</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/15 rounded-xl px-3 py-1.5 text-sm">
+                <TrendingUp className="w-4 h-4" />
+                <span>{progress?.percentage ?? 0}% завершено</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Module list */}
         <div className="lg:col-span-2">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-primary/10 dark:bg-primary/20 rounded-xl">
-              <BookOpen className="w-5 h-5 text-primary" />
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 dark:bg-primary/20 rounded-xl">
+                <BookOpen className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Курсы</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Выберите тему для изучения</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Курсы</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Выберите тему для изучения</p>
-            </div>
+
+            {/* Filter — only for students */}
+            {isStudent && (
+              <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 rounded-xl p-1">
+                {(Object.keys(FILTER_LABELS) as FilterType[]).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                      filter === f
+                        ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                    )}
+                  >
+                    {FILTER_LABELS[f]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {modulesLoading ? (
             <ModulesPageSkeleton />
           ) : (
             <ModuleList
-              modules={modules || []}
+              modules={filteredModules}
               progress={progress}
               onTopicClick={(topicId) => navigate(`/topic/${topicId}`)}
             />
