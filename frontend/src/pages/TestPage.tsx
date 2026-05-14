@@ -5,10 +5,10 @@ import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { cn, formatTime } from '@/lib/utils';
 import {
-  CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft, ChevronRight,
-  Flag, Send, BookOpen
+  CheckCircle2, XCircle, Clock, ChevronLeft, ChevronRight,
+  Flag, Send, BookOpen, Trophy
 } from 'lucide-react';
-import type { TestResult } from '@/types';
+import type { TestResult, TopicWithProgress } from '@/types';
 
 export default function TestPage() {
   const { topicId } = useParams<{ topicId: string }>();
@@ -27,6 +27,14 @@ export default function TestPage() {
     },
   });
 
+  const { data: topicProgress, isLoading: isProgressLoading } = useQuery<TopicWithProgress>({
+    queryKey: ['topic', topicId],
+    queryFn: async () => {
+      const response = await api.get(`/topics/${topicId}/with-progress`);
+      return response.data;
+    },
+  });
+
   const submitMutation = useMutation({
     mutationFn: async (data: any) => {
       const response = await api.post(`/topics/${topicId}/test/submit`, data);
@@ -38,6 +46,16 @@ export default function TestPage() {
   useEffect(() => {
     if (test?.time_limit) setTimeLeft(test.time_limit * 60);
   }, [test]);
+
+  useEffect(() => {
+    if (timeLeft === null || result) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [timeLeft, result]);
 
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0 || result) return;
@@ -113,7 +131,7 @@ export default function TestPage() {
     return false;
   };
 
-  if (isLoading) {
+  if (isLoading || isProgressLoading) {
     return (
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="card p-6">
@@ -127,6 +145,33 @@ export default function TestPage() {
             <div className="h-12 skeleton rounded" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (topicProgress?.progress_status === 'completed' && !result) {
+    return (
+      <div className="max-w-3xl mx-auto animate-fade-in">
+        <div className="card p-8 text-center">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-emerald-100 dark:bg-emerald-900/30 mb-5">
+            <Trophy className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+            Тема уже пройдена!
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 mb-2">
+            Вы уже успешно прошли этот тест.
+          </p>
+          {topicProgress.best_score !== null && topicProgress.best_score !== undefined && (
+            <p className="text-lg font-semibold text-primary mb-6">
+              Лучший результат: {topicProgress.best_score}%
+            </p>
+          )}
+          <Button onClick={() => navigate(`/topic/${topicId}`)}>
+            <BookOpen className="w-4 h-4 mr-1.5" />
+            Вернуться к теме
+          </Button>
+        </div>
       </div>
     );
   }

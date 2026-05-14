@@ -1,11 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/api/client';
 import type { TeacherLabSubmission } from '@/types';
-import { FileText, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { FileText, CheckCircle2, Clock, AlertTriangle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { cn, formatDate } from '@/lib/utils';
 import { useState } from 'react';
+
+async function downloadSubmission(submission: TeacherLabSubmission) {
+  const response = await api.get(`/labs/${submission.id}/download`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([response.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = submission.file_name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 interface LabSubmissionList {
   submissions: TeacherLabSubmission[];
@@ -110,7 +122,16 @@ export default function TeacherLabsPage() {
                       <p className="text-sm text-gray-400 dark:text-gray-500">{submission.file_name}</p>
                     </div>
                   </div>
-                  <span className="text-sm text-gray-400">{formatDate(submission.submitted_at)}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="text-sm text-gray-400">{formatDate(submission.submitted_at)}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); downloadSubmission(submission); }}
+                      title="Скачать файл"
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -134,7 +155,16 @@ export default function TeacherLabsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Файл</p>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">{selectedSubmission.file_name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{selectedSubmission.file_name}</p>
+                    <button
+                      onClick={() => downloadSubmission(selectedSubmission)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors flex-shrink-0"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Скачать
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Оценка (0-100)</label>

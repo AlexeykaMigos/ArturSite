@@ -60,7 +60,7 @@ class CommentBase(BaseModel):
 
 
 class CommentCreate(CommentBase):
-    topic_id: UUID
+    pass
 
 
 class CommentResponse(BaseModel):
