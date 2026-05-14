@@ -1,6 +1,7 @@
 import secrets
 import hashlib
 import hmac
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -105,7 +106,12 @@ async def refresh_token(
     if not stored_token or stored_token.expires_at < datetime.utcnow():
         raise HTTPException(status_code=401, detail="Token expired or revoked")
 
-    result = db.execute(select(User).where(User.id == user_id))
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:

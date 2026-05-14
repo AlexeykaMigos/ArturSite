@@ -175,7 +175,12 @@ async def grade_lab(
     current_user: User = Depends(require_role("teacher", "admin")),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(LabSubmission).where(LabSubmission.id == submission_id))
+    try:
+        submission_uuid = uuid.UUID(submission_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid submission ID")
+
+    result = db.execute(select(LabSubmission).where(LabSubmission.id == submission_uuid))
     submission = result.scalar_one_or_none()
 
     if not submission:
@@ -184,7 +189,10 @@ async def grade_lab(
     result = db.execute(select(Lab).where(Lab.id == submission.lab_id))
     lab = result.scalar_one_or_none()
 
-    if grade_data.grade < 0 or (lab and grade_data.grade > lab.max_score):
+    if not lab:
+        raise HTTPException(status_code=404, detail="Lab not found")
+
+    if grade_data.grade < 0 or grade_data.grade > lab.max_score:
         raise HTTPException(status_code=400, detail="Invalid grade")
 
     submission.grade = grade_data.grade

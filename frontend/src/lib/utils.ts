@@ -5,8 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Backend stores datetimes in UTC without timezone suffix.
+// Appending 'Z' tells the browser to treat the string as UTC.
+export function parseUtcDate(date: string | Date): Date {
+  if (date instanceof Date) return date;
+  if (/[Zz]|[+-]\d{2}:\d{2}$/.test(date)) return new Date(date);
+  return new Date(date + 'Z');
+}
+
 export function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('ru-RU', {
+  return parseUtcDate(date).toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

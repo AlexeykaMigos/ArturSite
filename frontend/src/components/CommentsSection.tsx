@@ -6,6 +6,7 @@ import type { Comment } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useAuthStore } from '@/stores/auth';
+import { parseUtcDate } from '@/lib/utils';
 
 interface CommentsSectionProps {
   topicId: string;
@@ -109,7 +110,7 @@ export function CommentsSection({ topicId }: CommentsSectionProps) {
                 {comment.user?.name || 'Аноним'}
               </span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true, locale: ru })}
+                {formatDistanceToNow(parseUtcDate(comment.created_at), { addSuffix: true, locale: ru })}
               </span>
             </div>
 

@@ -423,8 +423,10 @@ export default function TopicPage() {
         </div>
       )}
 
-      {/* Comments */}
-      <CommentsSection topicId={topicId || ''} />
+      {/* Comments — shown only after course started */}
+      {topic.progress_status !== 'not_started' && (
+        <CommentsSection topicId={topicId || ''} />
+      )}
 
       {/* Navigation */}
       <div className="flex justify-between items-center mt-5">
