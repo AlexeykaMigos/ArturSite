@@ -11,6 +11,7 @@ import {
 import type { TopicWithProgress, Lab, LabSubmission } from '@/types';
 import { useState, useRef } from 'react';
 import { CommentsSection } from '@/components/CommentsSection';
+import { useAuthStore } from '@/stores/auth';
 
 function TopicSkeleton() {
   return (
@@ -155,6 +156,7 @@ export default function TopicPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showLabUpload, setShowLabUpload] = useState(false);
+  const { user } = useAuthStore();
 
   const { data: topic, isLoading } = useQuery<TopicWithProgress>({
     queryKey: ['topic', topicId],
@@ -183,7 +185,7 @@ export default function TopicPage() {
   });
 
   const { data: mySubmission } = useQuery<LabSubmission | null>({
-    queryKey: ['lab-submission', topicId],
+    queryKey: ['lab-submission', topicId, user?.id],
     queryFn: async () => {
       const response = await api.get(`/topics/${topicId}/lab/submission`);
       return response.data;

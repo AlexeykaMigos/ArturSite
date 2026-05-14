@@ -128,8 +128,15 @@ export default function TeacherLabsPage() {
                       <p className="text-sm text-gray-400 dark:text-gray-500">{submission.file_name}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-sm text-gray-400">{formatDate(submission.submitted_at)}</span>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {submission.grade !== null && submission.grade !== undefined ? (
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-primary">{submission.grade}</div>
+                        <div className="text-xs text-gray-400">баллов</div>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">{formatDate(submission.submitted_at)}</span>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); downloadSubmission(submission); }}
                       title="Скачать файл"
