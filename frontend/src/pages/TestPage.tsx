@@ -4,7 +4,10 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { cn, formatTime } from '@/lib/utils';
-import { CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import {
+  CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft, ChevronRight,
+  Flag, Send, BookOpen
+} from 'lucide-react';
 import type { TestResult } from '@/types';
 
 export default function TestPage() {
@@ -14,6 +17,7 @@ export default function TestPage() {
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
   const [flagged, setFlagged] = useState<Set<string>>(new Set());
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   const { data: test, isLoading } = useQuery<any>({
     queryKey: ['test', topicId],
@@ -28,20 +32,15 @@ export default function TestPage() {
       const response = await api.post(`/topics/${topicId}/test/submit`, data);
       return response.data;
     },
-    onSuccess: (data) => {
-      setResult(data);
-    },
+    onSuccess: (data) => setResult(data),
   });
 
   useEffect(() => {
-    if (test?.time_limit) {
-      setTimeLeft(test.time_limit * 60);
-    }
+    if (test?.time_limit) setTimeLeft(test.time_limit * 60);
   }, [test]);
 
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0 || result) return;
-
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev !== null && prev <= 1) {
@@ -54,7 +53,6 @@ export default function TestPage() {
         return prev !== null ? prev - 1 : null;
       });
     }, 1000);
-
     return () => clearInterval(timer);
   }, [timeLeft, result, answers, test]);
 
@@ -84,22 +82,16 @@ export default function TestPage() {
     setAnswers((prev) => {
       const currentPairs = prev[questionId]?.pairs || [];
       const updatedPairs = currentPairs.filter((pair: any) => pair.term_id !== termId);
-      if (definitionId) {
-        updatedPairs.push({ term_id: termId, definition_id: definitionId });
-      }
+      if (definitionId) updatedPairs.push({ term_id: termId, definition_id: definitionId });
       return { ...prev, [questionId]: { pairs: updatedPairs } };
     });
   };
 
   const toggleFlag = (questionId: string) => {
     setFlagged((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(questionId)) {
-        newSet.delete(questionId);
-      } else {
-        newSet.add(questionId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      next.has(questionId) ? next.delete(questionId) : next.add(questionId);
+      return next;
     });
   };
 
@@ -111,42 +103,79 @@ export default function TestPage() {
     });
   };
 
+  const isAnswered = (q: any) => {
+    const a = answers[q.id];
+    if (!a) return false;
+    if (q.type === 'single') return !!a.selected_option_id;
+    if (q.type === 'multiple') return (a.selected_option_ids || []).length > 0;
+    if (q.type === 'text') return (a.answer_text || '').trim().length > 0;
+    if (q.type === 'matching') return (a.pairs || []).length > 0;
+    return false;
+  };
+
   if (isLoading) {
     return (
-      <div className="max-w-3xl mx-auto">
-        <div className="card p-8 animate-pulse">
-          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-6" />
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
-          ))}
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="card p-6">
+          <div className="h-4 skeleton rounded w-1/3 mb-3" />
+          <div className="h-2 skeleton rounded mb-1" />
         </div>
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="card p-6">
+            <div className="h-5 skeleton rounded w-2/3 mb-4" />
+            <div className="h-12 skeleton rounded mb-2" />
+            <div className="h-12 skeleton rounded" />
+          </div>
+        ))}
       </div>
     );
   }
 
   if (result) {
+    const scoreColor = result.passed
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : 'text-red-600 dark:text-red-400';
     return (
-      <div className="max-w-3xl mx-auto">
-        <div className="card p-8">
+      <div className="max-w-3xl mx-auto animate-fade-in">
+        <div className="card p-8 mb-5">
           <div className="text-center mb-8">
-            {result.passed ? (
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 mb-4">
-                <CheckCircle2 className="w-10 h-10 text-green-600 dark:text-green-400" />
-              </div>
-            ) : (
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
-                <XCircle className="w-10 h-10 text-red-600 dark:text-red-400" />
-              </div>
-            )}
+            <div className={cn(
+              'inline-flex items-center justify-center w-24 h-24 rounded-full mb-5',
+              result.passed
+                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                : 'bg-red-100 dark:bg-red-900/30'
+            )}>
+              {result.passed
+                ? <CheckCircle2 className="w-12 h-12 text-emerald-600 dark:text-emerald-400" />
+                : <XCircle className="w-12 h-12 text-red-600 dark:text-red-400" />
+              }
+            </div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
               {result.passed ? 'Тест пройден!' : 'Тест не пройден'}
             </h1>
-            <p className="text-gray-500 dark:text-gray-400">
-              Ваш результат: {result.percentage}% (нужно {result.passed_score}%)
+            <p className="text-gray-500 dark:text-gray-400 mb-6">
+              {result.passed
+                ? 'Отличная работа! Вы успешно завершили тему.'
+                : `Нужно набрать минимум ${result.passed_score}%. Попробуйте ещё раз!`}
             </p>
+
+            {/* Score display */}
+            <div className="inline-flex items-center gap-6 bg-gray-50 dark:bg-gray-800 rounded-2xl px-8 py-4">
+              <div className="text-center">
+                <div className={cn('text-4xl font-extrabold', scoreColor)}>{result.percentage}%</div>
+                <div className="text-xs text-gray-400 mt-0.5">Ваш результат</div>
+              </div>
+              <div className="w-px h-10 bg-gray-200 dark:bg-gray-700" />
+              <div className="text-center">
+                <div className="text-4xl font-extrabold text-gray-300 dark:text-gray-600">{result.passed_score}%</div>
+                <div className="text-xs text-gray-400 mt-0.5">Проходной балл</div>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-6">
+          {/* Details */}
+          <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Разбор ответов</h3>
+          <div className="space-y-3">
             {result.details.map((detail, idx) => {
               const question = test?.questions?.find((q: any) => q.id === detail.question_id);
               const formatAnswer = (answer: any, type: string) => {
@@ -167,33 +196,7 @@ export default function TestPage() {
                   const opt = question?.options?.find((o: any) => o.id === answer);
                   return opt?.text || answer;
                 }
-                if (type === 'text') {
-                  return answer;
-                }
-                return JSON.stringify(answer);
-              };
-
-              const formatCorrectAnswer = (answer: any, type: string) => {
-                if (type === 'matching' && Array.isArray(answer)) {
-                  return answer.map((pair: any) => {
-                    const term = question?.matching_terms?.find((t: any) => t.id === pair.term_id);
-                    const def = question?.matching_definitions?.find((d: any) => d.id === pair.definition_id);
-                    return `${term?.text || pair.term_id} → ${def?.text || pair.definition_id}`;
-                  }).join(', ');
-                }
-                if (type === 'single' || type === 'multiple') {
-                  if (Array.isArray(answer)) {
-                    return answer.map((id: string) => {
-                      const opt = question?.options?.find((o: any) => o.id === id);
-                      return opt?.text || id;
-                    }).join(', ');
-                  }
-                  const opt = question?.options?.find((o: any) => o.id === answer);
-                  return opt?.text || answer;
-                }
-                if (type === 'text') {
-                  return Array.isArray(answer) ? answer.join(', ') : answer;
-                }
+                if (type === 'text') return Array.isArray(answer) ? answer.join(', ') : answer;
                 return JSON.stringify(answer);
               };
 
@@ -201,43 +204,38 @@ export default function TestPage() {
                 <div
                   key={detail.question_id}
                   className={cn(
-                    'p-4 rounded-lg border',
+                    'p-4 rounded-xl border',
                     detail.correct
-                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
                       : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                   )}
                 >
-                  <div className="flex items-center gap-2 mb-2">
-                    {detail.correct ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                    )}
-                    <span className="font-medium text-gray-900 dark:text-gray-100">
-                      Вопрос {idx + 1}
+                  <div className="flex items-center gap-2 mb-1">
+                    {detail.correct
+                      ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                      : <XCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                    }
+                    <span className="font-medium text-gray-900 dark:text-gray-100 text-sm">
+                      Вопрос {idx + 1}: {question?.text?.slice(0, 60)}{question?.text?.length > 60 ? '…' : ''}
                     </span>
                   </div>
                   {!detail.correct && (
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      Правильный ответ: {formatCorrectAnswer(detail.correct_answer, question?.type)}
+                    <p className="text-xs text-gray-500 dark:text-gray-400 ml-6">
+                      Правильно: <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatAnswer(detail.correct_answer, question?.type)}</span>
+                      {' · '}
+                      Ваш ответ: <span className="text-red-500">{formatAnswer(detail.user_answer, question?.type) || '(нет ответа)'}</span>
                     </p>
                   )}
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Ваш ответ: {formatAnswer(detail.user_answer, question?.type)}
-                  </p>
                 </div>
               );
             })}
           </div>
 
-          <div className="flex justify-center gap-4 mt-8">
+          <div className="flex justify-center gap-3 mt-8">
             <Button variant="secondary" onClick={() => navigate('/modules')}>
               К модулям
             </Button>
-            <Button onClick={() => {
-              setResult(null);
-              setAnswers({});
-            }}>
+            <Button onClick={() => { setResult(null); setAnswers({}); setCurrentIndex(0); }}>
               Пройти заново
             </Button>
           </div>
@@ -248,166 +246,282 @@ export default function TestPage() {
 
   if (!test) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          Тест не найден
-        </h2>
+      <div className="text-center py-16 card p-12">
+        <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Тест не найден</h2>
       </div>
     );
   }
 
+  const questions = test.questions || [];
+  const totalQ = questions.length;
+  const answeredCount = questions.filter(isAnswered).length;
+  const progressPct = totalQ > 0 ? Math.round((answeredCount / totalQ) * 100) : 0;
+  const currentQuestion = questions[currentIndex];
+  const isTimeLow = timeLeft !== null && timeLeft < 60;
+
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="card p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+    <div className="max-w-3xl mx-auto animate-fade-in">
+      {/* Header bar */}
+      <div className="card p-4 mb-5 sticky top-20 z-40">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-wrap">
             {timeLeft !== null && (
               <div className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-lg',
-                timeLeft < 60 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700'
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-mono font-bold transition-colors',
+                isTimeLow
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 animate-pulse'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200'
               )}>
-                <Clock className="w-4 h-4" />
-                <span className="font-mono font-bold">{formatTime(timeLeft)}</span>
+                <Clock className="w-3.5 h-3.5" />
+                {formatTime(timeLeft)}
               </div>
             )}
             <span className="text-sm text-gray-500 dark:text-gray-400">
-              Вопросов: {test.questions.length}
+              {answeredCount}/{totalQ} ответов
             </span>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              Проходной балл: {test.passing_score}%
+            <span className="text-sm text-gray-400 dark:text-gray-500">
+              · Проходной: {test.passing_score}%
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            Отвечено: {Object.keys(answers).length}/{test.questions.length}
+          <Button
+            onClick={handleSubmit}
+            isLoading={submitMutation.isPending}
+            size="sm"
+            className="gap-1.5"
+          >
+            <Send className="w-3.5 h-3.5" />
+            Завершить
+          </Button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-3">
+          <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-all duration-500"
+              style={{ width: `${progressPct}%` }}
+            />
           </div>
+        </div>
+
+        {/* Question dots */}
+        <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+          {questions.map((q: any, i: number) => (
+            <button
+              key={q.id}
+              onClick={() => setCurrentIndex(i)}
+              className={cn(
+                'w-7 h-7 rounded-lg text-xs font-semibold transition-all',
+                i === currentIndex
+                  ? 'bg-primary text-white scale-110'
+                  : isAnswered(q)
+                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                  : flagged.has(q.id)
+                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+              )}
+            >
+              {i + 1}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="space-y-6">
-        {test.questions.map((question: any, idx: number) => (
-          <div key={question.id} className={cn(
-            'card p-6',
-            flagged.has(question.id) && 'border-l-4 border-l-yellow-500'
-          )}>
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                  {idx + 1}.
+      {/* Current question */}
+      {currentQuestion && (
+        <div className={cn(
+          'card p-6 mb-4 animate-slide-up',
+          flagged.has(currentQuestion.id) && 'border-l-4 border-l-amber-400'
+        )}>
+          <div className="flex items-start justify-between mb-5 gap-3">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-7 h-7 rounded-lg bg-primary/10 dark:bg-primary/20 text-primary text-sm font-bold flex items-center justify-center flex-shrink-0">
+                  {currentIndex + 1}
                 </span>
-                <span className="text-gray-900 dark:text-gray-100">{question.text}</span>
+                <span className="text-xs text-gray-400 uppercase tracking-wider font-medium">
+                  {currentQuestion.type === 'single' && 'Один ответ'}
+                  {currentQuestion.type === 'multiple' && 'Несколько ответов'}
+                  {currentQuestion.type === 'text' && 'Текстовый ответ'}
+                  {currentQuestion.type === 'matching' && 'Соответствие'}
+                </span>
               </div>
-              <button
-                onClick={() => toggleFlag(question.id)}
-                className={cn(
-                  'p-1 rounded',
-                  flagged.has(question.id)
-                    ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400'
-                    : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                )}
-              >
-                <AlertTriangle className="w-5 h-5" />
-              </button>
+              <p className="text-gray-900 dark:text-gray-100 font-medium leading-relaxed">
+                {currentQuestion.text}
+              </p>
             </div>
+            <button
+              onClick={() => toggleFlag(currentQuestion.id)}
+              className={cn(
+                'p-2 rounded-lg flex-shrink-0 transition-colors',
+                flagged.has(currentQuestion.id)
+                  ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                  : 'text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-600'
+              )}
+              title="Отметить вопрос"
+            >
+              <Flag className="w-4 h-4" />
+            </button>
+          </div>
 
-            {question.type === 'single' && question.options && (
-              <div className="space-y-2">
-                {question.options.map((option: any) => (
+          {/* Answer area */}
+          {currentQuestion.type === 'single' && currentQuestion.options && (
+            <div className="space-y-2">
+              {currentQuestion.options.map((option: any, optIdx: number) => {
+                const selected = answers[currentQuestion.id]?.selected_option_id === option.id;
+                return (
                   <label
                     key={option.id}
                     className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
-                      answers[question.id]?.selected_option_id === option.id
-                        ? 'bg-primary/10 border border-primary'
-                        : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      'flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all duration-150 border',
+                      selected
+                        ? 'bg-primary/8 border-primary/30 dark:bg-primary/15 dark:border-primary/40'
+                        : 'bg-gray-50 dark:bg-gray-800/50 border-transparent hover:border-gray-200 dark:hover:border-gray-600 hover:bg-white dark:hover:bg-gray-700/50'
                     )}
                   >
+                    <div className={cn(
+                      'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                      selected ? 'border-primary' : 'border-gray-300 dark:border-gray-600'
+                    )}>
+                      {selected && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
+                    </div>
                     <input
                       type="radio"
-                      name={question.id}
-                      checked={answers[question.id]?.selected_option_id === option.id}
-                      onChange={() => handleSingleChoice(question.id, option.id)}
-                      className="w-4 h-4"
+                      name={currentQuestion.id}
+                      checked={selected}
+                      onChange={() => handleSingleChoice(currentQuestion.id, option.id)}
+                      className="sr-only"
                     />
-                    <span className="text-gray-900 dark:text-gray-100">{option.text}</span>
+                    <span className="text-gray-900 dark:text-gray-100 text-sm leading-relaxed flex-1">
+                      <span className="text-gray-400 dark:text-gray-500 mr-1.5 font-mono text-xs">
+                        {String.fromCharCode(65 + optIdx)}.
+                      </span>
+                      {option.text}
+                    </span>
                   </label>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
+          )}
 
-            {question.type === 'multiple' && question.options && (
-              <div className="space-y-2">
-                {question.options.map((option: any) => (
+          {currentQuestion.type === 'multiple' && currentQuestion.options && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-400 mb-3">Можно выбрать несколько вариантов</p>
+              {currentQuestion.options.map((option: any, optIdx: number) => {
+                const checked = answers[currentQuestion.id]?.selected_option_ids?.includes(option.id) || false;
+                return (
                   <label
                     key={option.id}
                     className={cn(
-                      'flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors',
-                      answers[question.id]?.selected_option_ids?.includes(option.id)
-                        ? 'bg-primary/10 border border-primary'
-                        : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      'flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all duration-150 border',
+                      checked
+                        ? 'bg-primary/8 border-primary/30 dark:bg-primary/15 dark:border-primary/40'
+                        : 'bg-gray-50 dark:bg-gray-800/50 border-transparent hover:border-gray-200 dark:hover:border-gray-600 hover:bg-white dark:hover:bg-gray-700/50'
                     )}
                   >
+                    <div className={cn(
+                      'w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors',
+                      checked ? 'border-primary bg-primary' : 'border-gray-300 dark:border-gray-600'
+                    )}>
+                      {checked && <CheckCircle2 className="w-3 h-3 text-white" />}
+                    </div>
                     <input
                       type="checkbox"
-                      checked={answers[question.id]?.selected_option_ids?.includes(option.id) || false}
-                      onChange={(e) => handleMultipleChoice(question.id, option.id, e.target.checked)}
-                      className="w-4 h-4"
+                      checked={checked}
+                      onChange={(e) => handleMultipleChoice(currentQuestion.id, option.id, e.target.checked)}
+                      className="sr-only"
                     />
-                    <span className="text-gray-900 dark:text-gray-100">{option.text}</span>
+                    <span className="text-gray-900 dark:text-gray-100 text-sm leading-relaxed flex-1">
+                      <span className="text-gray-400 dark:text-gray-500 mr-1.5 font-mono text-xs">
+                        {String.fromCharCode(65 + optIdx)}.
+                      </span>
+                      {option.text}
+                    </span>
                   </label>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
+          )}
 
-            {question.type === 'text' && (
+          {currentQuestion.type === 'text' && (
+            <div>
+              <p className="text-xs text-gray-400 mb-3">Введите ключевое слово или фразу</p>
               <textarea
-                value={answers[question.id]?.answer_text || ''}
-                onChange={(e) => handleTextAnswer(question.id, e.target.value)}
-                placeholder="Введите ваш ответ..."
-                className="input min-h-[100px]"
+                value={answers[currentQuestion.id]?.answer_text || ''}
+                onChange={(e) => handleTextAnswer(currentQuestion.id, e.target.value)}
+                placeholder="Ваш ответ..."
+                className="input min-h-[120px] resize-y"
               />
-            )}
+            </div>
+          )}
 
-            {question.type === 'matching' && question.matching_terms && question.matching_definitions && (
-              <div className="space-y-3">
-                {question.matching_terms.map((term: any) => {
-                  const selectedDefinition = answers[question.id]?.pairs?.find(
-                    (pair: any) => pair.term_id === term.id
-                  )?.definition_id || '';
-
-                  return (
-                    <div key={term.id} className="flex items-center gap-3">
-                      <div className="flex-1 text-sm text-gray-900 dark:text-gray-100">
-                        {term.text}
-                      </div>
-                      <select
-                        value={selectedDefinition}
-                        onChange={(e) => handleMatchingAnswer(question.id, term.id, e.target.value)}
-                        className="input max-w-[240px]"
-                      >
-                        <option value="">Выберите определение</option>
-                        {question.matching_definitions.map((definition: any) => (
-                          <option key={definition.id} value={definition.id}>
-                            {definition.text}
-                          </option>
-                        ))}
-                      </select>
+          {currentQuestion.type === 'matching' && currentQuestion.matching_terms && currentQuestion.matching_definitions && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-400 mb-3">Сопоставьте термины с определениями</p>
+              {currentQuestion.matching_terms.map((term: any) => {
+                const selectedDef = answers[currentQuestion.id]?.pairs?.find(
+                  (pair: any) => pair.term_id === term.id
+                )?.definition_id || '';
+                return (
+                  <div key={term.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+                    <div className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {term.text}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+                    <span className="text-gray-300 dark:text-gray-600">→</span>
+                    <select
+                      value={selectedDef}
+                      onChange={(e) => handleMatchingAnswer(currentQuestion.id, term.id, e.target.value)}
+                      className="input max-w-[220px] text-sm"
+                    >
+                      <option value="">Выберите...</option>
+                      {currentQuestion.matching_definitions.map((def: any) => (
+                        <option key={def.id} value={def.id}>{def.text}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-      <div className="mt-8 flex justify-center">
+      {/* Navigation */}
+      <div className="flex items-center justify-between">
         <Button
-          onClick={handleSubmit}
-          isLoading={submitMutation.isPending}
-          size="lg"
+          variant="ghost"
+          onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
+          disabled={currentIndex === 0}
+          className="gap-1"
         >
-          Отправить ответы
+          <ChevronLeft className="w-4 h-4" />
+          Назад
         </Button>
+
+        <span className="text-sm text-gray-400">
+          {currentIndex + 1} / {totalQ}
+        </span>
+
+        {currentIndex < totalQ - 1 ? (
+          <Button
+            variant="ghost"
+            onClick={() => setCurrentIndex(Math.min(totalQ - 1, currentIndex + 1))}
+            className="gap-1"
+          >
+            Далее
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSubmit}
+            isLoading={submitMutation.isPending}
+            className="gap-1.5"
+          >
+            <Send className="w-4 h-4" />
+            Завершить тест
+          </Button>
+        )}
       </div>
     </div>
   );
