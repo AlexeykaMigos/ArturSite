@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List
@@ -6,7 +6,7 @@ from datetime import datetime
 import uuid
 
 from ..core.database import get_db
-from ..core.security import get_current_user
+from ..core.security import get_current_user, require_role
 from ..core.email import email_service
 from ..models.user import User
 from ..models.content import Topic, Test, TestAttempt, TopicProgress, Lab, LabSubmission
@@ -259,6 +259,87 @@ async def submit_test(
         "details": details,
         "topic_id": topic_id,
         "created_at": attempt.created_at
+    }
+
+
+@router.get("/{topic_id}/test/full")
+async def get_test_full(
+    topic_id: str,
+    current_user: User = Depends(require_role("teacher", "admin")),
+    db: Session = Depends(get_db)
+):
+    """Return test with correct answers for teacher editing."""
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+
+    result = db.execute(select(Test).where(Test.topic_id == topic_uuid))
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    return {
+        "id": str(test.id),
+        "topic_id": str(test.topic_id),
+        "questions": test.questions if isinstance(test.questions, list) else [],
+        "passing_score": test.passing_score,
+        "shuffle_questions": test.shuffle_questions,
+        "shuffle_options": test.shuffle_options,
+    }
+
+
+@router.put("/{topic_id}/test")
+async def create_or_update_test(
+    topic_id: str,
+    data: dict = Body(...),
+    current_user: User = Depends(require_role("teacher", "admin")),
+    db: Session = Depends(get_db)
+):
+    """Create or replace the test for a topic."""
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+
+    topic_result = db.execute(select(Topic).where(Topic.id == topic_uuid))
+    topic = topic_result.scalar_one_or_none()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    result = db.execute(select(Test).where(Test.topic_id == topic_uuid))
+    test = result.scalar_one_or_none()
+
+    questions = data.get("questions", [])
+    shuffle_questions = data.get("shuffle_questions", False)
+    shuffle_options = data.get("shuffle_options", True)
+    passing_score = data.get("passing_score", topic.passing_score or 70)
+
+    if test:
+        test.questions = questions
+        test.shuffle_questions = shuffle_questions
+        test.shuffle_options = shuffle_options
+        test.passing_score = passing_score
+    else:
+        test = Test(
+            topic_id=topic_uuid,
+            questions=questions,
+            shuffle_questions=shuffle_questions,
+            shuffle_options=shuffle_options,
+            passing_score=passing_score,
+        )
+        db.add(test)
+
+    db.commit()
+    db.refresh(test)
+    return {
+        "id": str(test.id),
+        "topic_id": str(test.topic_id),
+        "questions": test.questions,
+        "passing_score": test.passing_score,
+        "shuffle_questions": test.shuffle_questions,
+        "shuffle_options": test.shuffle_options,
     }
 
 
