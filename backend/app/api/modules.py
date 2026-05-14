@@ -19,17 +19,30 @@ router = APIRouter(prefix="/modules", tags=["modules"])
 @router.get("", response_model=List[ModuleResponse])
 @cache_result(ttl=3600)
 async def get_modules(db: Session = Depends(get_db)):
-    result = db.execute(select(Module).where(Module.is_published == True).order_by(Module.order))
-    modules = result.scalars().all()
+    modules_result = db.execute(
+        select(Module).where(Module.is_published == True).order_by(Module.order)
+    )
+    modules = modules_result.scalars().all()
+
+    if not modules:
+        return []
+
+    # Single query for all topics across all modules
+    module_ids = [m.id for m in modules]
+    topics_result = db.execute(
+        select(Topic).where(Topic.module_id.in_(module_ids)).order_by(Topic.order)
+    )
+    all_topics = topics_result.scalars().all()
+
+    # Group by module
+    topics_by_module: dict = {}
+    for t in all_topics:
+        topics_by_module.setdefault(t.module_id, []).append(t)
 
     response = []
     for module in modules:
-        topics_result = db.execute(
-            select(Topic).where(Topic.module_id == module.id).order_by(Topic.order)
-        )
-        topics = topics_result.scalars().all()
-
-        module_data = {
+        topics = topics_by_module.get(module.id, [])
+        response.append({
             "id": module.id,
             "title": module.title,
             "description": module.description,
@@ -50,8 +63,7 @@ async def get_modules(db: Session = Depends(get_db)):
                 }
                 for t in topics
             ]
-        }
-        response.append(module_data)
+        })
 
     return response
 

@@ -93,9 +93,9 @@ export default function Layout() {
     <div className={cn('min-h-screen bg-gray-50 dark:bg-gray-950', theme === 'dark' && 'dark')}>
       <nav className="glass border-b border-gray-200/80 dark:border-gray-700/80 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center gap-6">
+          <div className="flex items-center h-16">
+            {/* Logo — left */}
+            <div className="flex-1 flex items-center">
               <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
                   <GraduationCap className="w-4.5 h-4.5 text-white" style={{ width: 18, height: 18 }} />
@@ -104,33 +104,33 @@ export default function Layout() {
                   EduBook
                 </span>
               </Link>
-
-              {/* Desktop Nav */}
-              <div className="hidden md:flex items-center gap-0.5">
-                {studentNavItems.map((item) => (
-                  <NavLink key={item.to} {...item} variant="default" />
-                ))}
-                {isTeacher && (
-                  <>
-                    <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1.5" />
-                    {teacherNavItems.map((item) => (
-                      <NavLink key={item.to} {...item} variant="teacher" />
-                    ))}
-                  </>
-                )}
-                {isAdmin && (
-                  <>
-                    <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1.5" />
-                    {adminNavItems.map((item) => (
-                      <NavLink key={item.to} {...item} variant="admin" />
-                    ))}
-                  </>
-                )}
-              </div>
             </div>
 
-            {/* Right section */}
-            <div className="flex items-center gap-2">
+            {/* Desktop Nav — center */}
+            <div className="hidden md:flex items-center gap-0.5">
+              {studentNavItems.map((item) => (
+                <NavLink key={item.to} {...item} variant="default" />
+              ))}
+              {isTeacher && (
+                <>
+                  <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1.5" />
+                  {teacherNavItems.map((item) => (
+                    <NavLink key={item.to} {...item} variant="teacher" />
+                  ))}
+                </>
+              )}
+              {isAdmin && (
+                <>
+                  <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1.5" />
+                  {adminNavItems.map((item) => (
+                    <NavLink key={item.to} {...item} variant="admin" />
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* Right section — right */}
+            <div className="flex-1 flex items-center justify-end gap-2">
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-xl text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors"

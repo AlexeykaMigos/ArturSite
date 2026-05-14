@@ -8,7 +8,9 @@ redis_client = redis.Redis(
     host=settings.REDIS_HOST if hasattr(settings, 'REDIS_HOST') else 'localhost',
     port=settings.REDIS_PORT if hasattr(settings, 'REDIS_PORT') else 6379,
     db=0,
-    decode_responses=True
+    decode_responses=True,
+    socket_connect_timeout=0.5,
+    socket_timeout=0.5,
 )
 
 
