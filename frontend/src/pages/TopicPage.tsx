@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft, ArrowRight, CheckCircle2, Clock, HelpCircle,
-  Upload, X, FlaskConical, ChevronRight, Star, BookOpen, PlayCircle
+  Upload, X, FlaskConical, ChevronRight, Star, BookOpen, PlayCircle,
+  AlertTriangle
 } from 'lucide-react';
-import type { TopicWithProgress, Lab } from '@/types';
+import type { TopicWithProgress, Lab, LabSubmission } from '@/types';
 import { useState, useRef } from 'react';
 import { CommentsSection } from '@/components/CommentsSection';
 
@@ -43,6 +44,7 @@ function LabUploadModal({ lab, topicId, onClose }: { lab: Lab; topicId: string; 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lab', topicId] });
       queryClient.invalidateQueries({ queryKey: ['labs', 'my'] });
+      queryClient.invalidateQueries({ queryKey: ['lab-submission', topicId] });
       onClose();
     },
     onError: (error: any) => {
@@ -175,6 +177,15 @@ export default function TopicPage() {
     queryKey: ['lab', topicId],
     queryFn: async () => {
       const response = await api.get(`/topics/${topicId}/lab`);
+      return response.data;
+    },
+    enabled: !!topic?.has_lab,
+  });
+
+  const { data: mySubmission } = useQuery<LabSubmission | null>({
+    queryKey: ['lab-submission', topicId],
+    queryFn: async () => {
+      const response = await api.get(`/topics/${topicId}/lab/submission`);
       return response.data;
     },
     enabled: !!topic?.has_lab,
@@ -361,13 +372,54 @@ export default function TopicPage() {
             </div>
           )}
 
-          <button
-            onClick={() => setShowLabUpload(true)}
-            className="btn btn-secondary gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            Загрузить работу
-          </button>
+          {mySubmission ? (
+            <div className="space-y-3">
+              <div className={cn(
+                'flex items-center gap-3 p-3 rounded-xl border',
+                mySubmission.status === 'approved' && 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800',
+                mySubmission.status === 'pending' && 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800',
+                mySubmission.status === 'needs_revision' && 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800',
+              )}>
+                {mySubmission.status === 'approved' && <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />}
+                {mySubmission.status === 'pending' && <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />}
+                {mySubmission.status === 'needs_revision' && <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{mySubmission.file_name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {mySubmission.status === 'approved' && `Принята · ${mySubmission.grade !== undefined && mySubmission.grade !== null ? `${mySubmission.grade} баллов` : ''}`}
+                    {mySubmission.status === 'pending' && 'На проверке у преподавателя'}
+                    {mySubmission.status === 'needs_revision' && 'Требует доработки'}
+                  </p>
+                </div>
+                {mySubmission.grade !== undefined && mySubmission.grade !== null && (
+                  <div className="flex-shrink-0 text-right">
+                    <div className="text-lg font-bold text-secondary">{mySubmission.grade}</div>
+                    <div className="text-xs text-gray-400">баллов</div>
+                  </div>
+                )}
+              </div>
+              {mySubmission.feedback && (
+                <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Комментарий преподавателя</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{mySubmission.feedback}</p>
+                </div>
+              )}
+              {mySubmission.status === 'needs_revision' && (
+                <button onClick={() => setShowLabUpload(true)} className="btn btn-secondary gap-2">
+                  <Upload className="w-4 h-4" />
+                  Загрузить новую версию
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLabUpload(true)}
+              className="btn btn-secondary gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Загрузить работу
+            </button>
+          )}
         </div>
       )}
 

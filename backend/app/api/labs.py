@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List
@@ -117,6 +118,36 @@ async def get_my_labs(
         }
         for sub, lab, topic in rows
     ]
+
+
+@router.get("/labs/{submission_id}/download")
+async def download_lab_file(
+    submission_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        submission_uuid = uuid.UUID(submission_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid submission ID")
+
+    result = db.execute(select(LabSubmission).where(LabSubmission.id == submission_uuid))
+    submission = result.scalar_one_or_none()
+
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    if submission.user_id != current_user.id and current_user.role.value not in ["teacher", "admin"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not os.path.exists(submission.file_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+
+    return FileResponse(
+        path=submission.file_path,
+        filename=submission.file_name,
+        media_type="application/octet-stream"
+    )
 
 
 @router.get("/labs/{submission_id}", response_model=LabSubmissionResponse)

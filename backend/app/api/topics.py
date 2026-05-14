@@ -396,3 +396,42 @@ async def submit_lab(
     db.refresh(submission)
 
     return submission
+
+
+@router.get("/{topic_id}/lab/submission")
+async def get_my_lab_submission(
+    topic_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        topic_uuid = uuid.UUID(topic_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid topic ID")
+
+    lab_result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
+    lab = lab_result.scalar_one_or_none()
+
+    if not lab:
+        return None
+
+    submission_result = db.execute(
+        select(LabSubmission)
+        .where(LabSubmission.lab_id == lab.id, LabSubmission.user_id == current_user.id)
+        .order_by(LabSubmission.submitted_at.desc())
+        .limit(1)
+    )
+    submission = submission_result.scalar_one_or_none()
+
+    if not submission:
+        return None
+
+    return {
+        "id": str(submission.id),
+        "file_name": submission.file_name,
+        "status": submission.status,
+        "grade": submission.grade,
+        "feedback": submission.feedback,
+        "submitted_at": submission.submitted_at.isoformat(),
+        "graded_at": submission.graded_at.isoformat() if submission.graded_at else None,
+    }
