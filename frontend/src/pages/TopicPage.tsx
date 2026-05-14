@@ -4,8 +4,8 @@ import api from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import {
-  ArrowLeft, ArrowRight, FileText, CheckCircle2, Clock, HelpCircle,
-  Upload, X, FlaskConical, ChevronRight, Star, BookOpen
+  ArrowLeft, ArrowRight, CheckCircle2, Clock, HelpCircle,
+  Upload, X, FlaskConical, ChevronRight, Star, BookOpen, PlayCircle
 } from 'lucide-react';
 import type { TopicWithProgress, Lab } from '@/types';
 import { useState, useRef } from 'react';
@@ -151,6 +151,7 @@ function LabUploadModal({ lab, topicId, onClose }: { lab: Lab; topicId: string; 
 export default function TopicPage() {
   const { topicId } = useParams<{ topicId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [showLabUpload, setShowLabUpload] = useState(false);
 
   const { data: topic, isLoading } = useQuery<TopicWithProgress>({
@@ -158,6 +159,15 @@ export default function TopicPage() {
     queryFn: async () => {
       const response = await api.get(`/topics/${topicId}/with-progress`);
       return response.data;
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/topics/${topicId}/mark-progress`, null, { params: { status: 'in_progress' } });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['topic', topicId] });
     },
   });
 
@@ -241,13 +251,33 @@ export default function TopicPage() {
         </div>
 
         {/* Content */}
-        <div
-          className="topic-content"
-          dangerouslySetInnerHTML={{ __html: topic.content }}
-        />
+        {topic.progress_status === 'not_started' ? (
+          <div className="mt-6 flex flex-col items-center justify-center py-12 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30">
+            <div className="w-16 h-16 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center mb-4">
+              <PlayCircle className="w-8 h-8 text-primary" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Начните изучение</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6 max-w-xs">
+              Нажмите кнопку, чтобы приступить к изучению темы и открыть её содержимое.
+            </p>
+            <Button
+              onClick={() => startMutation.mutate()}
+              isLoading={startMutation.isPending}
+              className="gap-2"
+            >
+              <PlayCircle className="w-4 h-4" />
+              Начать курс
+            </Button>
+          </div>
+        ) : (
+          <div
+            className="topic-content"
+            dangerouslySetInnerHTML={{ __html: topic.content }}
+          />
+        )}
 
         {/* Test section */}
-        {topic.has_test && (
+        {topic.has_test && topic.progress_status !== 'not_started' && (
           <div className="mt-8 p-5 bg-blue-50 dark:bg-blue-950/30 rounded-2xl border border-blue-100 dark:border-blue-900/50">
             <div className="flex items-start gap-4">
               <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
