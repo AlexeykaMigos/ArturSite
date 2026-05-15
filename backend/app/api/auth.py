@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ..core.database import get_db
@@ -17,12 +17,16 @@ from ..core.security import (
 from ..models.user import User, RefreshToken, PasswordResetToken
 from ..schemas.user import (
     UserCreate, UserResponse, UserPasswordUpdate, UserUpdate,
-    ForgotPasswordRequest, ResetPasswordRequest
+    ForgotPasswordRequest, ResetPasswordRequest, LoginRequest
 )
 from ..core.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 PASSWORD_RESET_TOKEN_BYTES = 32
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def hash_reset_token(token: str) -> str:
@@ -53,11 +57,12 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(response: Response, email: str, password: str, db: Session = Depends(get_db)):
-    result = db.execute(select(User).where(User.email == email))
+async def login(response: Response, data: LoginRequest, db: Session = Depends(get_db)):
+    # Credentials received in request body, not query params
+    result = db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(password, user.password_hash):
+    if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.is_active:
@@ -66,7 +71,7 @@ async def login(response: Response, email: str, password: str, db: Session = Dep
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
 
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = _utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     db_token = RefreshToken(user_id=user.id, token=refresh_token, expires_at=expires_at)
     db.add(db_token)
     db.commit()
@@ -75,7 +80,7 @@ async def login(response: Response, email: str, password: str, db: Session = Dep
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        max_age=7 * 24 * 3600,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
         samesite="lax"
     )
 
@@ -103,7 +108,7 @@ async def refresh_token(
     result = db.execute(select(RefreshToken).where(RefreshToken.token == refresh_token))
     stored_token = result.scalar_one_or_none()
 
-    if not stored_token or stored_token.expires_at < datetime.utcnow():
+    if not stored_token or stored_token.expires_at < _utcnow():
         raise HTTPException(status_code=401, detail="Token expired or revoked")
 
     try:
@@ -117,7 +122,23 @@ async def refresh_token(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
+    # Rotate refresh token: invalidate old one and issue a new one
+    db.delete(stored_token)
+
     new_access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+
+    expires_at = _utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    db.add(RefreshToken(user_id=user.id, token=new_refresh_token, expires_at=expires_at))
+    db.commit()
+
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        samesite="lax"
+    )
 
     return {"access_token": new_access_token, "token_type": "bearer"}
 
@@ -191,7 +212,7 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
 
     reset_token = secrets.token_urlsafe(PASSWORD_RESET_TOKEN_BYTES)
     reset_token_hash = hash_reset_token(reset_token)
-    expires_at = datetime.utcnow() + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
+    expires_at = _utcnow() + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
     db_token = PasswordResetToken(
         user_id=user.id,
         token=reset_token_hash,
@@ -227,7 +248,7 @@ async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="Invalid reset token")
     if reset_token.used_at is not None:
         raise HTTPException(status_code=400, detail="Reset token already used")
-    if reset_token.expires_at < datetime.utcnow():
+    if reset_token.expires_at < _utcnow():
         raise HTTPException(status_code=400, detail="Reset token expired")
 
     user_result = db.execute(select(User).where(User.id == reset_token.user_id))
@@ -236,7 +257,7 @@ async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(ge
         raise HTTPException(status_code=400, detail="Invalid reset token")
 
     user.password_hash = get_password_hash(payload.new_password)
-    reset_token.used_at = datetime.utcnow()
+    reset_token.used_at = _utcnow()
     db.commit()
 
     return {"message": "Password reset successful"}

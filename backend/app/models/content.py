@@ -1,9 +1,13 @@
 import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, ForeignKey, JSON
+from datetime import datetime, timezone
+from sqlalchemy import Column, String, Text, Integer, Boolean, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from ..core.database import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Module(Base):
@@ -14,9 +18,10 @@ class Module(Base):
     description = Column(Text, nullable=True)
     order = Column(Integer, default=0)
     is_published = Column(Boolean, default=True)
-    created_by = Column(UUID(as_uuid=True), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # ForeignKey added: previously was UUID without FK constraint
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     topics = relationship("Topic", back_populates="module", order_by="Topic.order")
 
@@ -33,8 +38,8 @@ class Topic(Base):
     has_lab = Column(Boolean, default=False)
     passing_score = Column(Integer, default=70)
     time_limit = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     module = relationship("Module", back_populates="topics")
     test = relationship("Test", back_populates="topic", uselist=False, cascade="all, delete-orphan")
@@ -52,8 +57,8 @@ class Test(Base):
     shuffle_questions = Column(Boolean, default=False)
     shuffle_options = Column(Boolean, default=True)
     passing_score = Column(Integer, default=70)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     topic = relationship("Topic", back_populates="test")
     attempts = relationship("TestAttempt", back_populates="test", cascade="all, delete-orphan")
@@ -70,7 +75,7 @@ class TestAttempt(Base):
     passed = Column(Boolean, default=False)
     answers = Column(JSON, nullable=True)
     time_spent = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
     user = relationship("User", back_populates="test_attempts")
     test = relationship("Test", back_populates="attempts")
@@ -86,8 +91,8 @@ class Lab(Base):
     requirements = Column(JSON, nullable=True)
     max_score = Column(Integer, default=100)
     allowed_extensions = Column(JSON, default=lambda: ["pdf", "docx", "zip", "rar"])
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     topic = relationship("Topic", back_populates="lab")
     submissions = relationship("LabSubmission", back_populates="lab", cascade="all, delete-orphan")
@@ -103,8 +108,8 @@ class LabTask(Base):
     description = Column(Text, nullable=False)
     order = Column(Integer, default=0)
     max_score = Column(Integer, default=10)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     lab = relationship("Lab", back_populates="tasks")
 
@@ -120,12 +125,13 @@ class LabSubmission(Base):
     status = Column(String(50), default="pending")
     grade = Column(Integer, nullable=True)
     feedback = Column(Text, nullable=True)
-    submitted_at = Column(DateTime, default=datetime.utcnow)
+    submitted_at = Column(DateTime, default=_utcnow)
     graded_at = Column(DateTime, nullable=True)
-    graded_by = Column(UUID(as_uuid=True), nullable=True)
+    # ForeignKey added: previously was UUID without FK constraint
+    graded_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     lab = relationship("Lab", back_populates="submissions")
-    user = relationship("User", back_populates="lab_submissions")
+    user = relationship("User", back_populates="lab_submissions", foreign_keys=[user_id])
 
 
 class TopicProgress(Base):
@@ -137,14 +143,14 @@ class TopicProgress(Base):
     status = Column(String(50), default="not_started")
     best_test_score = Column(Integer, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     user = relationship("User", back_populates="progress")
     topic = relationship("Topic", back_populates="progress")
 
     __table_args__ = (
-        {"sqlite_autoincrement": True},
+        UniqueConstraint("user_id", "topic_id", name="uq_topic_progress_user_topic"),
     )
 
 
@@ -155,9 +161,10 @@ class Comment(Base):
     topic_id = Column(UUID(as_uuid=True), ForeignKey("topics.id"), nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     content = Column(Text, nullable=False)
-    parent_id = Column(UUID(as_uuid=True), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # ForeignKey added: previously was UUID without FK constraint
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("comments.id", ondelete="CASCADE"), nullable=True)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     topic = relationship("Topic", back_populates="comments")
     user = relationship("User", back_populates="comments")
@@ -170,5 +177,5 @@ class GlossaryTerm(Base):
     term = Column(String(255), nullable=False, unique=True, index=True)
     definition = Column(Text, nullable=False)
     category = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)

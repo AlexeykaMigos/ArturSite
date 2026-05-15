@@ -1,3 +1,5 @@
+import uuid
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, desc
@@ -7,6 +9,7 @@ from openpyxl import Workbook
 
 from ..core.database import get_db
 from ..core.security import require_role
+from ..core.email import email_service
 from ..models.user import User, UserRole
 from ..models.content import Module, Topic, Test, LabSubmission, TopicProgress, TestAttempt
 from ..schemas.user import UserCreate, UserResponse
@@ -42,29 +45,39 @@ async def get_students(
     result = db.execute(query)
     students = result.scalars().all()
 
-    student_list = []
-    for s in students:
-        attempts_result = db.execute(
-            select(func.avg(TestAttempt.score))
-            .where(TestAttempt.user_id == s.id)
-        )
-        avg_score = attempts_result.scalar()
+    student_ids = [s.id for s in students]
 
-        completed_result = db.execute(
-            select(func.count(TopicProgress.id))
-            .where(TopicProgress.user_id == s.id, TopicProgress.status == "completed")
-        )
-        completed = completed_result.scalar()
+    # Batch query: average score per student (avoids N+1)
+    avg_scores_result = db.execute(
+        select(TestAttempt.user_id, func.avg(TestAttempt.score))
+        .where(TestAttempt.user_id.in_(student_ids))
+        .group_by(TestAttempt.user_id)
+    )
+    avg_scores = {row[0]: row[1] for row in avg_scores_result.all()}
 
-        student_list.append({
+    # Batch query: completed topics per student (avoids N+1)
+    completed_result = db.execute(
+        select(TopicProgress.user_id, func.count(TopicProgress.id))
+        .where(
+            TopicProgress.user_id.in_(student_ids),
+            TopicProgress.status == "completed"
+        )
+        .group_by(TopicProgress.user_id)
+    )
+    completed_map = {row[0]: row[1] for row in completed_result.all()}
+
+    student_list = [
+        {
             "id": str(s.id),
             "name": s.name,
             "email": s.email,
             "group_id": str(s.group_id) if s.group_id else None,
             "is_active": s.is_active,
-            "average_score": round(float(avg_score), 1) if avg_score else None,
-            "completed_topics": completed or 0
-        })
+            "average_score": round(float(avg_scores[s.id]), 1) if s.id in avg_scores else None,
+            "completed_topics": completed_map.get(s.id, 0)
+        }
+        for s in students
+    ]
 
     return {
         "students": student_list,
@@ -135,7 +148,12 @@ async def get_student_progress(
     student_id: str,
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(User).where(User.id == student_id))
+    try:
+        student_uuid = uuid.UUID(student_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+
+    result = db.execute(select(User).where(User.id == student_uuid))
     student = result.scalar_one_or_none()
 
     if not student:
@@ -194,26 +212,29 @@ async def get_stats_overview(db: Session = Depends(get_db)):
     total_students_result = db.execute(
         select(func.count(User.id)).where(User.role == UserRole.STUDENT)
     )
-    total_students = total_students_result.scalar()
+    total_students = total_students_result.scalar() or 0
+
+    total_topics_result = db.execute(select(func.count(Topic.id)))
+    total_topics = total_topics_result.scalar() or 0
+
+    # Batch: completed topics count per student (avoids N+1)
+    completed_per_student_result = db.execute(
+        select(TopicProgress.user_id, func.count(TopicProgress.id))
+        .where(TopicProgress.status == "completed")
+        .group_by(TopicProgress.user_id)
+    )
+    completed_map = {row[0]: row[1] for row in completed_per_student_result.all()}
 
     students_result = db.execute(select(User).where(User.role == UserRole.STUDENT))
     students = students_result.scalars().all()
 
-    total_topics_result = db.execute(select(func.count(Topic.id)))
-    total_topics = total_topics_result.scalar()
-
     progress_data = []
     for s in students:
-        completed_result = db.execute(
-            select(func.count(TopicProgress.id))
-            .where(TopicProgress.user_id == s.id, TopicProgress.status == "completed")
-        )
-        completed = completed_result.scalar() or 0
+        completed = completed_map.get(s.id, 0)
         progress = int((completed / total_topics * 100) if total_topics > 0 else 0)
         progress_data.append({"student_id": str(s.id), "name": s.name, "progress": progress})
 
     struggling = [p for p in progress_data if p["progress"] < 50]
-
     avg_progress = sum(p["progress"] for p in progress_data) / len(progress_data) if progress_data else 0
 
     lab_stats_result = db.execute(
@@ -296,20 +317,31 @@ async def reset_student_password(
     student_id: str,
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(User).where(User.id == student_id))
+    try:
+        student_uuid = uuid.UUID(student_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+
+    result = db.execute(select(User).where(User.id == student_uuid))
     student = result.scalar_one_or_none()
 
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
     from ..core.security import get_password_hash
-    import secrets
 
     temp_password = secrets.token_urlsafe(8)
     student.password_hash = get_password_hash(temp_password)
     db.commit()
 
-    return {"temp_password": temp_password}
+    # Send temp password via email instead of returning it in the response
+    email_service.send_temp_password(
+        to_email=student.email,
+        student_name=student.name,
+        temp_password=temp_password
+    )
+
+    return {"message": "Temporary password sent to student's email"}
 
 
 @router.put("/students/{student_id}/toggle-active")
@@ -317,7 +349,12 @@ async def toggle_student_active(
     student_id: str,
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(User).where(User.id == student_id))
+    try:
+        student_uuid = uuid.UUID(student_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid student ID")
+
+    result = db.execute(select(User).where(User.id == student_uuid))
     student = result.scalar_one_or_none()
 
     if not student:
