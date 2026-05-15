@@ -1,9 +1,9 @@
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func
 from typing import List
-from datetime import datetime, timedelta
-import io
+from datetime import datetime, timezone
 
 from ..core.database import get_db
 from ..core.security import require_role, get_current_user
@@ -11,6 +11,10 @@ from ..models.user import User, UserRole
 from ..schemas.user import UserResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @router.get("/users")
@@ -56,7 +60,13 @@ async def update_user_role(
     if role not in ["student", "teacher", "admin"]:
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    result = db.execute(select(User).where(User.id == user_id))
+    # UUID validation added: was missing previously
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    result = db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -80,7 +90,13 @@ async def delete_user(
     if user_id == str(current_user.id):
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
-    result = db.execute(select(User).where(User.id == user_id))
+    # UUID validation added: was missing previously
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    result = db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -99,18 +115,10 @@ async def get_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin"))
 ):
+    # TODO: implement persistent audit log table
     return {
-        "logs": [
-            {
-                "id": "1",
-                "timestamp": datetime.utcnow().isoformat(),
-                "user_id": "sample-user-id",
-                "action": "login",
-                "details": "User logged in",
-                "ip": "192.168.1.1"
-            }
-        ],
-        "total": 1,
+        "logs": [],
+        "total": 0,
         "limit": limit,
         "offset": offset
     }
@@ -137,6 +145,7 @@ async def update_settings(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
+    # TODO: persist settings to database
     return {"message": "Settings updated"}
 
 
@@ -145,12 +154,13 @@ async def create_backup(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    # TODO: implement actual database backup via pg_dump / sqlite backup API
+    timestamp = _utcnow().strftime("%Y%m%d_%H%M%S")
 
     return {
         "message": "Backup created",
         "filename": f"backup_{timestamp}.sql",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": _utcnow().isoformat()
     }
 
 
@@ -159,6 +169,8 @@ async def clear_cache(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
+    from ..core.cache import invalidate_cache
+    invalidate_cache("")
     return {"message": "Cache cleared successfully"}
 
 
@@ -193,5 +205,5 @@ async def get_system_stats(
         "total_teachers": total_teachers or 0,
         "total_modules": total_modules or 0,
         "total_topics": total_topics or 0,
-        "uptime": "24h 30m"
+        "uptime": "N/A"
     }

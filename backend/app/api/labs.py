@@ -1,14 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import os
 import aiofiles
 
 from ..core.database import get_db
+from ..core.config import settings
 from ..core.security import get_current_user, require_role
 from ..core.email import email_service
 from ..models.user import User
@@ -21,6 +22,10 @@ from ..schemas.lab import (
 router = APIRouter(tags=["labs"])
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 @router.post("/labs", response_model=LabResponse)
 async def create_lab(
     lab_data: LabCreate,
@@ -28,10 +33,10 @@ async def create_lab(
     db: Session = Depends(get_db)
 ):
     try:
-        topic_uuid = uuid.UUID(lab_data.topic_id)
+        topic_uuid = uuid.UUID(str(lab_data.topic_id))
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     topic_result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = topic_result.scalar_one_or_none()
 
@@ -71,7 +76,7 @@ async def update_lab(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
     lab = result.scalar_one_or_none()
 
@@ -86,7 +91,6 @@ async def update_lab(
     db.refresh(lab)
 
     return lab
-
 
 
 @router.get("/labs/my", response_model=List[StudentLabSubmission])
@@ -157,7 +161,13 @@ async def get_lab_submission(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    result = db.execute(select(LabSubmission).where(LabSubmission.id == submission_id))
+    # UUID validation added: was missing previously
+    try:
+        submission_uuid = uuid.UUID(submission_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid submission ID")
+
+    result = db.execute(select(LabSubmission).where(LabSubmission.id == submission_uuid))
     submission = result.scalar_one_or_none()
 
     if not submission:
@@ -199,7 +209,7 @@ async def grade_lab(
     submission.grade = grade_data.grade
     submission.feedback = grade_data.feedback
     submission.status = "approved" if grade_data.grade >= (lab.max_score * 0.6) else "needs_revision"
-    submission.graded_at = datetime.utcnow()
+    submission.graded_at = _utcnow()
     submission.graded_by = current_user.id
 
     topic = None
@@ -244,7 +254,7 @@ async def grade_lab(
         if progress:
             if test_passed or not topic.has_test:
                 progress.status = "completed"
-                progress.completed_at = datetime.utcnow()
+                progress.completed_at = _utcnow()
             elif progress.status == "not_started":
                 progress.status = "in_progress"
         else:
@@ -252,14 +262,13 @@ async def grade_lab(
                 user_id=submission.user_id,
                 topic_id=topic.id,
                 status="completed" if (test_passed or not topic.has_test) else "in_progress",
-                completed_at=datetime.utcnow() if (test_passed or not topic.has_test) else None
+                completed_at=_utcnow() if (test_passed or not topic.has_test) else None
             )
             db.add(progress)
 
     db.commit()
     db.refresh(submission)
 
-    # Send email notification
     user_result = db.execute(select(User).where(User.id == submission.user_id))
     student = user_result.scalar_one_or_none()
     if student:

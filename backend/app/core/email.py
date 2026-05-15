@@ -100,6 +100,22 @@ class EmailService:
         
         return self.send_email(to_email, subject, html_content)
 
+    def send_temp_password(
+        self,
+        to_email: str,
+        student_name: str,
+        temp_password: str
+    ):
+        subject = "Временный пароль для входа"
+        html_content = (
+            f"<p>Здравствуйте, {student_name}!</p>"
+            f"<p>Преподаватель сбросил ваш пароль. Ваш временный пароль:</p>"
+            f"<p><strong>{temp_password}</strong></p>"
+            f"<p>После входа в систему смените пароль в личном кабинете.</p>"
+            f"<hr><p style='color:gray;font-size:12px;'>Это автоматическое уведомление.</p>"
+        )
+        return self.send_email(to_email, subject, html_content)
+
     def send_course_completed_notification(
         self,
         to_email: str,

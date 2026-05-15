@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@/types';
-import api from '@/api/client';
+import api, { setAccessToken } from '@/api/client';
 
 interface AuthState {
   user: User | null;
@@ -22,12 +22,12 @@ export const useAuthStore = create<AuthState>()(
       isLoading: true,
 
       login: async (email: string, password: string) => {
-        const response = await api.post('/auth/login', null, {
-          params: { email, password },
-        });
+        // Credentials sent in request body, not query params
+        const response = await api.post('/auth/login', { email, password });
         const { access_token, user } = response.data;
 
-        localStorage.setItem('access_token', access_token);
+        // Store access token in memory only (not localStorage) to protect against XSS
+        setAccessToken(access_token);
         set({ user, isAuthenticated: true });
       },
 
@@ -39,23 +39,26 @@ export const useAuthStore = create<AuthState>()(
         try {
           await api.post('/auth/logout', {}, { withCredentials: true });
         } finally {
-          localStorage.removeItem('access_token');
+          setAccessToken(null);
           set({ user: null, isAuthenticated: false });
         }
       },
 
       checkAuth: async () => {
-        const token = localStorage.getItem('access_token');
-        if (!token) {
-          set({ isLoading: false, isAuthenticated: false });
-          return;
-        }
-
+        // On page load: try to get a new access token via the httpOnly refresh cookie.
+        // This replaces the old localStorage-based token check.
         try {
-          const response = await api.get('/auth/me');
-          set({ user: response.data, isAuthenticated: true, isLoading: false });
+          const refreshResponse = await api.post(
+            '/auth/refresh',
+            {},
+            { withCredentials: true }
+          );
+          setAccessToken(refreshResponse.data.access_token);
+
+          const meResponse = await api.get('/auth/me');
+          set({ user: meResponse.data, isAuthenticated: true, isLoading: false });
         } catch {
-          localStorage.removeItem('access_token');
+          setAccessToken(null);
           set({ user: null, isAuthenticated: false, isLoading: false });
         }
       },
@@ -66,6 +69,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      // Persist only non-sensitive user info; never persist the access token
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,

@@ -1,9 +1,10 @@
+import random
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List
-from datetime import datetime
-import uuid
+from datetime import datetime, timezone
 
 from ..core.database import get_db
 from ..core.security import get_current_user, require_role
@@ -18,13 +19,21 @@ from ..schemas.test import (
 router = APIRouter(prefix="/topics", tags=["tests"])
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 @router.get("/{topic_id}/test", response_model=TestForUser)
-async def get_test(topic_id: str, db: Session = Depends(get_db)):
+async def get_test(
+    topic_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     try:
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Test).where(Test.topic_id == topic_uuid))
     test = result.scalar_one_or_none()
 
@@ -34,10 +43,10 @@ async def get_test(topic_id: str, db: Session = Depends(get_db)):
     topic_result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = topic_result.scalar_one_or_none()
 
-    questions = test.questions if isinstance(test.questions, list) else []
+    # Copy list to avoid mutating the JSON column's in-memory object
+    questions = list(test.questions) if isinstance(test.questions, list) else []
 
     if test.shuffle_questions:
-        import random
         random.shuffle(questions)
 
     processed_questions = []
@@ -51,7 +60,6 @@ async def get_test(topic_id: str, db: Session = Depends(get_db)):
         if q.get("options"):
             options = [{"id": o.get("id"), "text": o.get("text")} for o in q.get("options", [])]
             if test.shuffle_options:
-                import random
                 random.shuffle(options)
             q_data["options"] = options
 
@@ -81,7 +89,7 @@ async def submit_test(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Test).where(Test.topic_id == topic_uuid))
     test = result.scalar_one_or_none()
 
@@ -91,8 +99,8 @@ async def submit_test(
     questions = test.questions if isinstance(test.questions, list) else []
     passing_score = test.passing_score
 
-    total_correct = 0
-    total_points = 0
+    total_correct = 0.0
+    total_points = 0.0
     details = []
 
     answers_dict = {a.get("question_id"): a for a in submission.answers}
@@ -101,8 +109,8 @@ async def submit_test(
         q_id = q.get("id")
         q_type = q.get("type")
         correct = False
-        points_earned = 0
-        max_points = 1
+        points_earned = 0.0
+        max_points = 1.0
 
         user_answer = None
         correct_answer = None
@@ -116,7 +124,7 @@ async def submit_test(
 
             if user_ans == correct_answer:
                 correct = True
-                points_earned = 1
+                points_earned = 1.0
 
         elif q_type == "multiple":
             correct_opts = [o.get("id") for o in q.get("options", []) if o.get("is_correct")]
@@ -127,10 +135,10 @@ async def submit_test(
 
             if set(user_ans) == set(correct_opts):
                 correct = True
-                points_earned = 1
-            else:
-                partial = len(set(user_ans) & set(correct_opts)) / len(correct_opts)
-                points_earned = partial
+                points_earned = 1.0
+            elif correct_opts:
+                # Partial credit: fraction of correctly chosen options
+                points_earned = len(set(user_ans) & set(correct_opts)) / len(correct_opts)
 
         elif q_type == "matching":
             correct_pairs = q.get("matching_pairs") or q.get("pairs") or []
@@ -146,8 +154,8 @@ async def submit_test(
                 if pair.get("term_id") and pair.get("definition_id")
             }
 
-            max_points = len(correct_set)
-            points_earned = len(correct_set & user_set) if max_points > 0 else 0
+            max_points = float(len(correct_set)) if correct_set else 1.0
+            points_earned = float(len(correct_set & user_set)) if correct_set else 0.0
             correct = max_points > 0 and points_earned == max_points
             user_answer = user_pairs
             correct_answer = correct_pairs
@@ -156,12 +164,11 @@ async def submit_test(
             correct_keywords = [k.lower() for k in q.get("correct_keywords", [])]
             user_ans = answers_dict.get(q_id, {}).get("answer_text", "").lower().strip()
             user_answer = user_ans
-
             correct_answer = correct_keywords
 
             if any(kw in user_ans for kw in correct_keywords):
                 correct = True
-                points_earned = 1
+                points_earned = 1.0
 
         total_correct += points_earned
         total_points += max_points
@@ -174,7 +181,8 @@ async def submit_test(
             "correct_answer": correct_answer
         })
 
-    percentage = int((total_correct / total_points * 100) if total_points > 0 else 0)
+    # Use round() to avoid truncating partial credit
+    percentage = round((total_correct / total_points * 100) if total_points > 0 else 0)
     passed = percentage >= passing_score
 
     attempt = TestAttempt(
@@ -222,7 +230,7 @@ async def submit_test(
 
         if passed and should_complete:
             progress.status = "completed"
-            progress.completed_at = datetime.utcnow()
+            progress.completed_at = _utcnow()
         elif passed and progress.status != "completed":
             progress.status = "in_progress"
         elif progress.status == "not_started":
@@ -233,14 +241,13 @@ async def submit_test(
             topic_id=topic_uuid,
             status="completed" if should_complete else "in_progress",
             best_test_score=percentage,
-            completed_at=datetime.utcnow() if should_complete else None
+            completed_at=_utcnow() if should_complete else None
         )
         db.add(progress)
 
     db.commit()
     db.refresh(attempt)
 
-    # Send email notification if test passed
     if passed and topic:
         email_service.send_test_passed_notification(
             to_email=current_user.email,
@@ -251,7 +258,7 @@ async def submit_test(
 
     return {
         "attempt_id": attempt.id,
-        "total_score": int(total_correct),
+        "total_score": round(total_correct),
         "percentage": percentage,
         "passed": passed,
         "passed_score": passing_score,
@@ -380,7 +387,7 @@ async def get_topic_test_history(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(
         select(TestAttempt)
         .where(
@@ -413,7 +420,7 @@ async def get_best_attempt(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(
         select(TestAttempt)
         .where(

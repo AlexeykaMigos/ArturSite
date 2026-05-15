@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, delete as sa_delete
 from typing import List
 import uuid
 import os
 import aiofiles
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..core.database import get_db
 from ..core.security import get_current_user, require_role
 from ..core.cache import invalidate_cache
+from ..core.config import settings
 from ..models.user import User
 from ..models.content import Topic, Module, TopicProgress, Lab, LabSubmission, LabTask
 from ..schemas.content import TopicCreate, TopicUpdate, TopicResponse, TopicWithProgress
@@ -18,13 +19,17 @@ from ..schemas.lab import LabResponse, LabSubmissionResponse
 router = APIRouter(prefix="/topics", tags=["topics"])
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 @router.get("/{topic_id}", response_model=TopicResponse)
 async def get_topic(topic_id: str, db: Session = Depends(get_db)):
     try:
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = result.scalar_one_or_none()
 
@@ -44,7 +49,7 @@ async def get_topic_with_progress(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = result.scalar_one_or_none()
 
@@ -100,7 +105,7 @@ async def update_topic(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = result.scalar_one_or_none()
 
@@ -111,14 +116,11 @@ async def update_topic(
     for field, value in update_data.items():
         setattr(topic, field, value)
 
-    # Handle lab tasks
     if topic_data.lab_tasks is not None:
-        # Get existing lab for this topic
         lab_result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
         lab = lab_result.scalar_one_or_none()
 
         if topic.has_lab:
-            # Create lab if it doesn't exist
             if not lab:
                 lab = Lab(
                     topic_id=topic_uuid,
@@ -131,15 +133,12 @@ async def update_topic(
                 db.add(lab)
                 db.flush()
 
-            # Get existing lab tasks
             existing_tasks_result = db.execute(select(LabTask).where(LabTask.lab_id == lab.id))
             existing_tasks = existing_tasks_result.scalars().all()
             existing_task_ids = {task.id for task in existing_tasks}
 
-            # Update or create lab tasks
             for task_data in topic_data.lab_tasks:
                 if task_data.get('id'):
-                    # Update existing task
                     task_result = db.execute(select(LabTask).where(LabTask.id == task_data['id']))
                     task = task_result.scalar_one_or_none()
                     if task:
@@ -149,7 +148,6 @@ async def update_topic(
                         task.max_score = task_data['max_score']
                         existing_task_ids.discard(task.id)
                 else:
-                    # Create new task
                     new_task = LabTask(
                         lab_id=lab.id,
                         title=task_data['title'],
@@ -159,17 +157,15 @@ async def update_topic(
                     )
                     db.add(new_task)
 
-            # Delete tasks that were not in the update
             for task_id in existing_task_ids:
                 task_result = db.execute(select(LabTask).where(LabTask.id == task_id))
                 task = task_result.scalar_one_or_none()
                 if task:
                     db.delete(task)
         else:
-            # Delete lab if has_lab is false
             if lab:
-                # Delete lab tasks
-                db.execute(select(LabTask).where(LabTask.lab_id == lab.id)).delete()
+                # Fixed: was db.execute(select(...)).delete() which is invalid
+                db.execute(sa_delete(LabTask).where(LabTask.lab_id == lab.id))
                 db.delete(lab)
 
     db.commit()
@@ -188,7 +184,7 @@ async def delete_topic(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = result.scalar_one_or_none()
 
@@ -208,14 +204,22 @@ async def mark_topic_progress(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if status not in ["not_started", "in_progress", "completed"]:
-        raise HTTPException(status_code=400, detail="Invalid status")
+    # Students may only set in_progress / not_started to track reading.
+    # Completion is determined exclusively by test/lab logic, not by this endpoint.
+    is_teacher_or_admin = current_user.role.value in ("teacher", "admin")
+    allowed_statuses = {"not_started", "in_progress", "completed"} if is_teacher_or_admin else {"not_started", "in_progress"}
+
+    if status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid status. Students may only set 'not_started' or 'in_progress'."
+        )
 
     try:
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = result.scalar_one_or_none()
 
@@ -231,15 +235,18 @@ async def mark_topic_progress(
     progress = progress_result.scalar_one_or_none()
 
     if progress:
+        # Do not downgrade a completed topic
+        if progress.status == "completed" and not is_teacher_or_admin:
+            return {"message": "Progress already completed"}
         progress.status = status
         if status == "completed":
-            progress.completed_at = datetime.utcnow()
+            progress.completed_at = _utcnow()
     else:
         progress = TopicProgress(
             user_id=current_user.id,
             topic_id=topic_uuid,
             status=status,
-            completed_at=datetime.utcnow() if status == "completed" else None
+            completed_at=_utcnow() if status == "completed" else None
         )
         db.add(progress)
 
@@ -258,7 +265,7 @@ async def upload_topic_file(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Topic).where(Topic.id == topic_uuid))
     topic = result.scalar_one_or_none()
 
@@ -289,32 +296,31 @@ async def reorder_topics(
     for item in topic_orders:
         topic_id = item.get("topic_id")
         new_order = item.get("order")
-        
+
         try:
             topic_uuid = uuid.UUID(topic_id)
         except (ValueError, AttributeError):
             continue
-        
+
         result = db.execute(select(Topic).where(Topic.id == topic_uuid))
         topic = result.scalar_one_or_none()
-        
+
         if topic:
             topic.order = new_order
-    
+
     db.commit()
     invalidate_cache("modules")
-    
+
     return {"message": "Topics reordered successfully"}
 
 
-# Lab endpoints
 @router.get("/{topic_id}/lab", response_model=LabResponse)
 async def get_lab(topic_id: str, db: Session = Depends(get_db)):
     try:
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
     lab = result.scalar_one_or_none()
 
@@ -335,7 +341,7 @@ async def submit_lab(
         topic_uuid = uuid.UUID(topic_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=400, detail="Invalid topic ID")
-    
+
     result = db.execute(select(Lab).where(Lab.topic_id == topic_uuid))
     lab = result.scalar_one_or_none()
 
@@ -353,13 +359,24 @@ async def submit_lab(
     upload_dir = f"uploads/labs/{lab.id}"
     os.makedirs(upload_dir, exist_ok=True)
 
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    new_filename = f"{current_user.id}_{lab.id}_{timestamp}.{ext}"
-    file_path = os.path.join(upload_dir, new_filename)
+    # Check Content-Length header before reading the full file to avoid memory exhaustion
+    content_length = file.headers.get("content-length")
+    if content_length and int(content_length) > settings.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {settings.MAX_FILE_SIZE // (1024 * 1024)}MB)"
+        )
 
     content = await file.read()
-    if len(content) > 100 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 100MB)")
+    if len(content) > settings.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {settings.MAX_FILE_SIZE // (1024 * 1024)}MB)"
+        )
+
+    timestamp = _utcnow().strftime("%Y%m%d_%H%M%S")
+    new_filename = f"{current_user.id}_{lab.id}_{timestamp}.{ext}"
+    file_path = os.path.join(upload_dir, new_filename)
 
     async with aiofiles.open(file_path, "wb") as f:
         await f.write(content)
