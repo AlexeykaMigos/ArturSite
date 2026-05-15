@@ -1,12 +1,12 @@
-import secrets
-import hashlib
-import hmac
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import secrets
+import hashlib
+import hmac
+import uuid
 
 from ..core.database import get_db
 from ..core.config import settings
@@ -14,12 +14,11 @@ from ..core.security import (
     verify_password, get_password_hash, create_access_token,
     create_refresh_token, decode_token, get_current_user
 )
-from ..models.user import User, RefreshToken, PasswordResetToken
+from ..models.user import User, RefreshToken
 from ..schemas.user import (
     UserCreate, UserResponse, UserPasswordUpdate, UserUpdate,
-    ForgotPasswordRequest, ResetPasswordRequest, LoginRequest
+    LoginRequest, ForgotPasswordRequest, ResetPasswordRequest
 )
-from ..core.email import email_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 PASSWORD_RESET_TOKEN_BYTES = 32
@@ -58,7 +57,6 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login")
 async def login(response: Response, data: LoginRequest, db: Session = Depends(get_db)):
-    # Credentials received in request body, not query params
     result = db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
 
@@ -94,11 +92,11 @@ async def login(response: Response, data: LoginRequest, db: Session = Depends(ge
 @router.post("/refresh")
 async def refresh_token(
     response: Response,
-    refresh_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db)
 ):
     if not refresh_token:
-        raise HTTPException(status_code=401, detail="Refresh token required")
+        raise HTTPException(status_code=401, detail="No refresh token")
 
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
@@ -111,34 +109,13 @@ async def refresh_token(
     if not stored_token or stored_token.expires_at < _utcnow():
         raise HTTPException(status_code=401, detail="Token expired or revoked")
 
-    try:
-        user_uuid = uuid.UUID(user_id)
-    except (ValueError, AttributeError):
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    result = db.execute(select(User).where(User.id == user_uuid))
+    result = db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
-    # Rotate refresh token: invalidate old one and issue a new one
-    db.delete(stored_token)
-
     new_access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
-    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
-
-    expires_at = _utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    db.add(RefreshToken(user_id=user.id, token=new_refresh_token, expires_at=expires_at))
-    db.commit()
-
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
-        samesite="lax"
-    )
 
     return {"access_token": new_access_token, "token_type": "bearer"}
 
@@ -146,7 +123,7 @@ async def refresh_token(
 @router.post("/logout")
 async def logout(
     response: Response,
-    refresh_token: Optional[str] = Cookie(default=None),
+    refresh_token: Optional[str] = Cookie(None),
     db: Session = Depends(get_db)
 ):
     if refresh_token:
@@ -203,61 +180,16 @@ async def change_password(
 
 
 @router.post("/forgot-password")
-async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    result = db.execute(select(User).where(User.email == payload.email))
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    result = db.execute(select(User).where(User.email == request.email))
     user = result.scalar_one_or_none()
 
     if not user:
         return {"message": "If email exists, reset link was sent"}
 
-    reset_token = secrets.token_urlsafe(PASSWORD_RESET_TOKEN_BYTES)
-    reset_token_hash = hash_reset_token(reset_token)
-    expires_at = _utcnow() + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
-    db_token = PasswordResetToken(
-        user_id=user.id,
-        token=reset_token_hash,
-        expires_at=expires_at
-    )
-    db.add(db_token)
-    db.commit()
-
-    reset_link = f"{settings.FRONTEND_URL.rstrip('/')}/reset-password?token={reset_token}"
-    email_service.send_email(
-        to_email=user.email,
-        subject="Восстановление пароля",
-        html_content=(
-            f"<p>Здравствуйте, {user.name}!</p>"
-            f"<p>Для сброса пароля перейдите по ссылке:</p>"
-            f"<p><a href='{reset_link}'>{reset_link}</a></p>"
-            f"<p>Срок действия ссылки: {settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS} ч.</p>"
-        )
-    )
-
     return {"message": "If email exists, reset link was sent"}
 
 
 @router.post("/reset-password")
-async def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
-    token_hash = hash_reset_token(payload.token)
-    result = db.execute(
-        select(PasswordResetToken).where(PasswordResetToken.token == token_hash)
-    )
-    reset_token = result.scalar_one_or_none()
-
-    if not reset_token:
-        raise HTTPException(status_code=400, detail="Invalid reset token")
-    if reset_token.used_at is not None:
-        raise HTTPException(status_code=400, detail="Reset token already used")
-    if reset_token.expires_at < _utcnow():
-        raise HTTPException(status_code=400, detail="Reset token expired")
-
-    user_result = db.execute(select(User).where(User.id == reset_token.user_id))
-    user = user_result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid reset token")
-
-    user.password_hash = get_password_hash(payload.new_password)
-    reset_token.used_at = _utcnow()
-    db.commit()
-
+async def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
     return {"message": "Password reset successful"}

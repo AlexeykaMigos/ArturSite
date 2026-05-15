@@ -1,11 +1,14 @@
 import axios from 'axios';
 
-// Access token kept in memory (not localStorage) to protect against XSS.
-// The refresh token lives in an httpOnly cookie managed by the server.
-let _accessToken: string | null = null;
+let _accessToken: string | null = localStorage.getItem('access_token') || null;
 
 export function setAccessToken(token: string | null): void {
   _accessToken = token;
+  if (token) {
+    localStorage.setItem('access_token', token);
+  } else {
+    localStorage.removeItem('access_token');
+  }
 }
 
 export function getAccessToken(): string | null {
@@ -13,10 +16,11 @@ export function getAccessToken(): string | null {
 }
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
@@ -36,7 +40,7 @@ api.interceptors.response.use(
 
       try {
         const response = await axios.post(
-          'http://localhost:8000/api/auth/refresh',
+          '/api/auth/refresh',
           {},
           { withCredentials: true }
         );
@@ -46,9 +50,13 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
 
         return api(originalRequest);
-      } catch {
+      } catch (refreshError) {
         setAccessToken(null);
-        window.location.href = '/login';
+        localStorage.removeItem('access_token');
+        
+        if (!originalRequest.url?.includes('/auth/')) {
+          window.location.href = '/login';
+        }
       }
     }
 

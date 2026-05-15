@@ -32,12 +32,12 @@ class User(Base):
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
-    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
-    progress = relationship("TopicProgress", back_populates="user", cascade="all, delete-orphan")
-    test_attempts = relationship("TestAttempt", back_populates="user", cascade="all, delete-orphan")
-    lab_submissions = relationship("LabSubmission", back_populates="user", cascade="all, delete-orphan")
-    comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan", foreign_keys="RefreshToken.user_id")
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan", foreign_keys="PasswordResetToken.user_id")
+    progress = relationship("TopicProgress", back_populates="user", cascade="all, delete-orphan", foreign_keys="TopicProgress.user_id")
+    test_attempts = relationship("TestAttempt", back_populates="user", cascade="all, delete-orphan", foreign_keys="TestAttempt.user_id")
+    lab_submissions = relationship("LabSubmission", back_populates="user", cascade="all, delete-orphan", foreign_keys="LabSubmission.user_id")
+    comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan", foreign_keys="Comment.user_id")
 
 
 class RefreshToken(Base):
@@ -49,7 +49,7 @@ class RefreshToken(Base):
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=_utcnow)
 
-    user = relationship("User", back_populates="refresh_tokens")
+    user = relationship("User", back_populates="refresh_tokens", foreign_keys=[user_id])
 
 
 class PasswordResetToken(Base):
@@ -62,7 +62,7 @@ class PasswordResetToken(Base):
     used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utcnow)
 
-    user = relationship("User", back_populates="password_reset_tokens")
+    user = relationship("User", back_populates="password_reset_tokens", foreign_keys=[user_id])
 
 
 class Group(Base):
